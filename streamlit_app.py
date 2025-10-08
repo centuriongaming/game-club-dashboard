@@ -1,36 +1,37 @@
-# app.py
+# streamlit_app.py
 import streamlit as st
 import time
 
-st.set_page_config(page_title="Password Lock", page_icon="🔒")
+st.set_page_config(page_title="Login", layout="centered")
 
-# This function is now simpler, just checking the state.
-def check_password_in_state():
-    """Returns `True` if the password in session state is correct."""
+# --- Login Logic ---
+def check_password():
+    """Returns `True` if the password is correct."""
     return st.session_state.get("password") == st.secrets["password"]
 
-# --- Main App Logic ---
-st.title("🔒 Private Dashboard Login")
-
-# If user is already logged in, show success and the link.
+# --- Navigation and Page Setup ---
+# Conditionally register the dashboard page
 if st.session_state.get("password_correct", False):
-    st.success("Logged in successfully! 🎉")
-    st.markdown("Please click the link below to go to your dashboard.")
-    st.page_link("pages/dashboard.py", label="Go to Dashboard", icon="🚀")
-    
-# If not logged in, show the login form.
+    # The user is logged in, so show the dashboard page.
+    # The title and icon are optional.
+    dashboard_page = st.Page(
+        "dashboard.py", title="Main Dashboard", icon="📊"
+    )
+    st.navigation([dashboard_page]).run()
 else:
+    # The user is not logged in, so show the login form.
+    st.title("🔒 Private Dashboard Login")
+    
     password_input = st.text_input(
         "Password", type="password", key="password"
     )
 
     if st.button("Sign In"):
-        # Add a spinner for visual feedback (the animation)
-        with st.spinner("Authenticating..."):            
-            # Check the password
-            if check_password_in_state():
+        with st.spinner("Authenticating..."):
+            time.sleep(0.5)
+            if check_password():
                 st.session_state["password_correct"] = True
-                # Rerun the app to show the success message and dashboard link
+                # Rerun the app to enter the logged-in state
                 st.rerun()
             else:
-                st.error("😕 Password incorrect. Please try again.")
+                st.error("😕 Password incorrect.")
