@@ -16,7 +16,7 @@ st.title("🔒 Private Dashboard Login")
 if st.session_state.get("password_correct", False):
     st.success("Logged in successfully! 🎉")
     st.markdown("Please click the link below to go to your dashboard.")
-    st.page_link("./pages/1_Dashboard.py", label="Go to Dashboard", icon="🚀")
+    st.page_link("pages/dashboard.py", label="Go to Dashboard", icon="🚀")
     
 # If not logged in, show the login form.
 else:
@@ -26,9 +26,7 @@ else:
 
     if st.button("Sign In"):
         # Add a spinner for visual feedback (the animation)
-        with st.spinner("Authenticating..."):
-            time.sleep(0.75) # Simulate a network call or processing time
-            
+        with st.spinner("Authenticating..."):            
             # Check the password
             if check_password_in_state():
                 st.session_state["password_correct"] = True
