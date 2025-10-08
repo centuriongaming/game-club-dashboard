@@ -9,7 +9,7 @@ if not st.session_state.get("password_correct", False):
 
 # --- Page Content ---
 # The rest of your dashboard code goes here
-st.set_page_config(page_title="My Dashboard", icon="📊")
+st.set_page_config(page_title="My Dashboard", page_icon="📊")
 
 st.title("🚀 Welcome to the Dashboard!")
 st.write("This is your protected dashboard content.")
@@ -18,4 +18,4 @@ if st.button("Log out"):
     del st.session_state["password_correct"]
     st.rerun()
 
-st.info("There is currently no data to display.", icon="ℹ️")
+st.info("There is currently no data to display.", page_icon="ℹ️")

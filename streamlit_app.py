@@ -15,7 +15,7 @@ if st.session_state.get("password_correct", False):
     # The user is logged in, so show the dashboard page.
     # The title and icon are optional.
     dashboard_page = st.Page(
-        "dashboard.py", title="Main Dashboard", icon="📊"
+        "dashboard.py", title="Main Dashboard", page_icon="📊"
     )
     st.navigation([dashboard_page]).run()
 else:
