@@ -1,4 +1,4 @@
 # requirements.txt
 streamlit
 SQLAlchemy
-psycopg[binary]
+psycopg2[binary]
