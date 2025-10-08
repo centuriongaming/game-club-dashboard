@@ -10,16 +10,15 @@ def check_password():
     return st.session_state.get("password") == st.secrets["password"]
 
 # --- Navigation and Page Setup ---
-# Conditionally register the dashboard page
 if st.session_state.get("password_correct", False):
-    # The user is logged in, so show the dashboard page.
-    # The title and icon are optional.
+    # User is logged in, so we'll register the dashboard page.
+    st.toast("Login successful!")
     dashboard_page = st.Page(
         "dashboard.py", title="Main Dashboard"
     )
     st.navigation([dashboard_page]).run()
 else:
-    # The user is not logged in, so show the login form.
+    # User is not logged in, show the login form.
     st.title("Private Dashboard Login")
     
     password_input = st.text_input(
@@ -31,7 +30,6 @@ else:
             time.sleep(0.5)
             if check_password():
                 st.session_state["password_correct"] = True
-                # Rerun the app to enter the logged-in state
                 st.rerun()
             else:
                 st.error("Password incorrect.")
