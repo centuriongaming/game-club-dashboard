@@ -1,53 +1,38 @@
 # app.py
 import streamlit as st
+import time
 
-# Function to check the password
-def check_password():
-    """Returns `True` if the user entered the correct password."""
+st.set_page_config(page_title="Password Lock", page_icon="🔒")
 
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        # The password is set in the Streamlit secrets
-        if st.session_state["password"] == st.secrets["password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password
-        else:
-            st.session_state["password_correct"] = False
+# This function is now simpler, just checking the state.
+def check_password_in_state():
+    """Returns `True` if the password in session state is correct."""
+    return st.session_state.get("password") == st.secrets["password"]
 
-    # Initialize the session state if it's not already done
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
+# --- Main App Logic ---
+st.title("🔒 Private Dashboard Login")
 
-    # Display the password input field
-    st.text_input(
-        "Password", type="password", on_change=password_entered, key="password"
-    )
+# If user is already logged in, show success and the link.
+if st.session_state.get("password_correct", False):
+    st.success("Logged in successfully! 🎉")
+    st.markdown("Please click the link below to go to your dashboard.")
+    st.page_link("pages/1_Dashboard.py", label="Go to Dashboard", icon="🚀")
     
-    # Give a hint if the password is wrong
-    if not st.session_state["password_correct"]:
-        st.write("Please enter the password to proceed.")
-        
-    return st.session_state["password_correct"]
+# If not logged in, show the login form.
+else:
+    password_input = st.text_input(
+        "Password", type="password", key="password"
+    )
 
-
-# --- Main Application ---
-
-# Set the page configuration
-st.set_page_config(page_title="My Dashboard", page_icon="🔒")
-
-# Check if the password is correct
-if not check_password():
-    st.stop() # Stop the app from running further if the password is not correct
-
-# If the password is correct, display the dashboard
-st.title("🚀 Welcome to the Dashboard!")
-st.write("This is your empty dashboard, ready for future data and visualizations.")
-
-st.info("There is currently no data to display.", icon="ℹ️")
-
-st.markdown("---")
-st.subheader("Placeholder for a Chart")
-st.write("A chart or graph will be displayed here.")
-
-st.subheader("Placeholder for Metrics")
-st.write("Key performance indicators (KPIs) will be shown here.")
+    if st.button("Sign In"):
+        # Add a spinner for visual feedback (the animation)
+        with st.spinner("Authenticating..."):
+            time.sleep(0.75) # Simulate a network call or processing time
+            
+            # Check the password
+            if check_password_in_state():
+                st.session_state["password_correct"] = True
+                # Rerun the app to show the success message and dashboard link
+                st.rerun()
+            else:
+                st.error("😕 Password incorrect. Please try again.")
