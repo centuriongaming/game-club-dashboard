@@ -16,7 +16,7 @@ st.title("🔒 Private Dashboard Login")
 if st.session_state.get("password_correct", False):
     st.success("Logged in successfully! 🎉")
     st.markdown("Please click the link below to go to your dashboard.")
-    st.page_link("pages/1_Dashboard.py", label="Go to Dashboard", icon="🚀")
+    st.page_link("./pages/1_Dashboard.py", label="Go to Dashboard", icon="🚀")
     
 # If not logged in, show the login form.
 else:
