@@ -9,9 +9,6 @@ numpy
 SQLAlchemy
 psycopg2-binary
 
-# Predictive Modeling
-lightfm
-
 # Data Visualization
 plotly
 seaborn
