@@ -75,20 +75,6 @@ with tab1:
 
 # --- Critic Analysis Tab ---
 with tab2:
-    st.subheader("Critics by Participation")
-    critic_participation_df = conn.query(queries['get_critic_participation'])
-    critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / critic_participation_df['total_games']) * 100
-    st.dataframe(
-        critic_participation_df[['critic_name', 'ratings_given', 'participation_rate', 'average_score']],
-        column_config={
-            "critic_name": "Critic",
-            "ratings_given": "Ratings Given",
-            "average_score": st.column_config.ProgressColumn("Average Score",format="%.2f",min_value=0,max_value=10),
-            "participation_rate": st.column_config.ProgressColumn("Participation",format="%.1f%%",min_value=0,max_value=100)
-        },
-        hide_index=True, use_container_width=True
-    )
-
     st.subheader("Visual Breakdowns")
     col1, col2 = st.columns(2)
     with col1:
@@ -113,9 +99,23 @@ with tab2:
             binned_pivot = binned_pivot.reindex(columns=critic_names, fill_value=0)
             bar_chart_colors = [color_map[name] for name in binned_pivot.columns]
             
-            st.bar_chart(binned_pivot, height=350, color=bar_chart_colors)
-            st.caption("Score Distribution by Critic")
+            st.markdown("##### Score Distribution by Critic")
+            st.bar_chart(binned_pivot, height=310, color=bar_chart_colors)
 
+    st.subheader("Critics by Participation")
+    critic_participation_df = conn.query(queries['get_critic_participation'])
+    critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / critic_participation_df['total_games']) * 100
+    st.dataframe(
+        critic_participation_df[['critic_name', 'ratings_given', 'participation_rate', 'average_score']],
+        column_config={
+            "critic_name": "Critic",
+            "ratings_given": "Ratings Given",
+            "average_score": st.column_config.ProgressColumn("Average Score",format="%.2f",min_value=0,max_value=10),
+            "participation_rate": st.column_config.ProgressColumn("Participation",format="%.1f%%",min_value=0,max_value=100)
+        },
+        hide_index=True, use_container_width=True
+    )
+    
     st.subheader("Critic Controversy Ranking")
     critic_controversy_df = conn.query(queries['get_critic_controversy'])
     critic_controversy_df['Rank'] = critic_controversy_df['controversy_score'].rank(method='min', ascending=False).astype(int)
@@ -125,9 +125,7 @@ with tab2:
         column_config={
             "Rank": "Rank",
             "critic_name": "Critic",
-            "controversy_score": st.column_config.BarChartColumn(
-                "Controversy Score (Avg. Deviation)"
-            )
+            "controversy_score": st.column_config.NumberColumn("Controversy Score", format="%.3f")
         },
         hide_index=True,
         use_container_width=True
