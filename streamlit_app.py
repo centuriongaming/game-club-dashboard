@@ -13,18 +13,17 @@ def check_password():
 if st.session_state.get("password_correct", False):
     st.toast("Login successful!")
     
-    # Define all your pages with the new filenames
-    descriptive_page = st.Page("pages/dashboard.py", title="Dashboard", default=True)
-    # predictions_page = st.Page("pages/predictions.py", title="Predictions")
-    analysis_page = st.Page("pages/analysis.py", title="Analysis")
+    # Define the new page structure
+    dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", default=True)
+    critic_details_page = st.Page("pages/critic_details.py", title="Critic Details")
+    game_details_page = st.Page("pages/game_details.py", title="Game Details")
+    predictions_page = st.Page("pages/predictions.py", title="Predictions")
 
-    # The order in this list determines the sidebar order
-    pg = st.navigation([descriptive_page, 
-                        # predictions_page, 
-                        analysis_page])
-    
+
+    # Update the navigation list
+    pg = st.navigation([dashboard_page, critic_details_page, game_details_page, predictions_page])
     pg.run()
-    
+
 else:
     # User is not logged in, show the login form.
     st.title("Private Dashboard Login")
