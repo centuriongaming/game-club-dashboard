@@ -77,5 +77,19 @@
     "SELECT g.game_name, c.critic_name AS nominated_by",
     "FROM games g LEFT JOIN critics c ON g.nominated_by = c.id",
     "WHERE g.upcoming IS TRUE ORDER BY g.game_name ASC;"
+  ],
+  "get_critic_nominations_count": [
+    "SELECT COUNT(*) as count FROM games WHERE nominated_by = %(critic_id)s;"
+  ],
+  "get_critic_details": [
+    "WITH GameStats AS (",
+    "  SELECT g.id AS game_id, g.game_name, AVG(r.score) AS avg_game_score,",
+    "  COUNT(r.critic_id)::FLOAT / (SELECT COUNT(*) FROM critics) AS participation_rate",
+    "  FROM games g LEFT JOIN ratings r ON g.id = r.game_id",
+    "  WHERE g.upcoming IS FALSE GROUP BY g.id, g.game_name",
+    ")",
+    "SELECT gs.game_name, gs.avg_game_score, gs.participation_rate, r.score AS critic_score",
+    "FROM GameStats gs",
+    "LEFT JOIN ratings r ON gs.game_id = r.game_id AND r.critic_id = %(critic_id)s;"
   ]
 }
