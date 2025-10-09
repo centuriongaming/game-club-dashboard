@@ -1,5 +1,18 @@
 # requirements.txt
+
+# Core App & Data
 streamlit
+pandas
+numpy
+
+# Database Connection
 SQLAlchemy
 psycopg2-binary
+
+# Predictive Modeling
+lightfm
+
+# Data Visualization
 plotly
+seaborn
+matplotlib
