@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 
-# --- Authentication and DB Connection (assuming utils.py) ---
+# --- Authentication and DB Connection ---
 try:
     from utils import check_auth, get_db_connection
     check_auth()
@@ -20,14 +20,14 @@ except (ImportError, ModuleNotFoundError):
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Dashboard", layout="wide")
-st.title("📊 Dashboard & Game Rankings")
+st.title("Dashboard & Game Rankings")
 
-# --- Key Performance Indicators (KPIs) in a Container ---
+# --- Key Performance Indicators ---
 with st.container(border=True):
     total_ratings_query = "SELECT COUNT(score) AS total FROM ratings;"
     avg_score_query = "SELECT AVG(score) AS average FROM ratings WHERE score IS NOT NULL;"
     participation_query = """
-        SELECT 
+        SELECT
             (COUNT(r.score)::FLOAT / (SELECT COUNT(*) FROM critics) / (SELECT COUNT(*) FROM games WHERE upcoming IS FALSE)) * 100
         AS rate FROM ratings r;
     """
@@ -40,7 +40,7 @@ with st.container(border=True):
     col2.metric("Overall Average Score", f"{avg_score:.2f}")
     col3.metric("Group Participation", f"{participation_rate:.1f}%")
 
-# --- Main Data Query for Rankings (No change needed here) ---
+# --- Main Data Query and Ranking Calculation ---
 main_query = """
 WITH game_stats AS (
     SELECT
@@ -63,40 +63,43 @@ SELECT
 FROM game_stats gs, global_stats glob;
 """
 rankings_df = conn.query(main_query)
-# The SQL query has been simplified slightly for this example, your more complex one works just fine.
 
-# --- Top & Bottom Games Showcase in a Container ---
+# Add Rank columns based on scores
+rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
+rankings_df['Rank'] = rankings_df.index + 1
+rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
+
+# --- Top & Bottom Ranked Games Showcase ---
 with st.container(border=True):
-    st.subheader("🏆 Top & 📉 Bottom Games")
-    best_unadjusted = rankings_df.loc[rankings_df['average_score'].idxmax()]
-    worst_unadjusted = rankings_df.loc[rankings_df['average_score'].idxmin()]
-    best_adjusted = rankings_df.loc[rankings_df['final_adjusted_score'].idxmax()]
-    worst_adjusted = rankings_df.loc[rankings_df['final_adjusted_score'].idxmin()]
+    st.subheader("Top & Bottom Ranked Games")
+    
+    # Get top and bottom ranked games
+    best_adjusted = rankings_df.loc[rankings_df['Rank'].idxmin()]
+    worst_adjusted = rankings_df.loc[rankings_df['Rank'].idxmax()]
+    best_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmin()]
+    worst_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmax()]
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("##### 🏆 Best Games")
-        c1, c2 = st.columns(2)
-        c1.metric(label=f"**Best (Unadjusted)**: {best_unadjusted['game_name']}", value=f"{best_unadjusted['average_score']:.2f}")
-        c2.metric(label=f"**Best (Adjusted)**: {best_adjusted['game_name']}", value=f"{best_adjusted['final_adjusted_score']:.2f}")
+        st.markdown("##### Final Ranking")
+        st.markdown(f"**#1**: {best_adjusted['game_name']}")
+        st.markdown(f"**Last**: {worst_adjusted['game_name']} (#{worst_adjusted['Rank']})")
     with col2:
-        st.markdown("##### 📉 Worst Games")
-        c1, c2 = st.columns(2)
-        c1.metric(label=f"**Worst (Unadjusted)**: {worst_unadjusted['game_name']}", value=f"{worst_unadjusted['average_score']:.2f}")
-        c2.metric(label=f"**Worst (Adjusted)**: {worst_adjusted['game_name']}", value=f"{worst_adjusted['final_adjusted_score']:.2f}")
+        st.markdown("##### Unadjusted Ranking")
+        st.markdown(f"**#1**: {best_unadjusted['game_name']}")
+        st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
 
 
 # --- Tabs for Full Rankings and Upcoming Games ---
-tab1, tab2 = st.tabs(["📈 Full Rankings", "🗓️ Upcoming Games"])
+tab1, tab2 = st.tabs(["Full Rankings", "Upcoming Games"])
 
 with tab1:
-    st.write("Click on a column header to sort the rankings.")
     st.dataframe(
-        rankings_df[['game_name', 'average_score', 'final_adjusted_score', 'number_of_ratings']],
+        rankings_df[['Rank', 'game_name', 'Unadjusted Rank', 'number_of_ratings']],
         column_config={
+            "Rank": st.column_config.NumberColumn("Rank", width="small"),
             "game_name": "Game",
-            "average_score": "Unadjusted Avg.",
-            "final_adjusted_score": "Final Score",
+            "Unadjusted Rank": "Unadjusted Rank",
             "number_of_ratings": "Ratings"
         },
         hide_index=True,
@@ -105,8 +108,8 @@ with tab1:
 
 with tab2:
     upcoming_games_query = """
-        SELECT 
-            g.game_name, 
+        SELECT
+            g.game_name,
             c.critic_name AS nominated_by
         FROM games g
         LEFT JOIN critics c ON g.nominated_by = c.id
