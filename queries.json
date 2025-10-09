@@ -87,7 +87,7 @@
     "  COUNT(r.critic_id)::FLOAT / (SELECT COUNT(*) FROM critics) AS participation_rate",
     "  FROM games g LEFT JOIN ratings r ON g.id = r.game_id",
     "  WHERE g.upcoming IS FALSE GROUP BY g.id, g.game_name",
-    "),",
+    ")",
     "SELECT gs.game_name, gs.avg_game_score, gs.participation_rate, r.score AS critic_score",
     "FROM GameStats gs",
     "LEFT JOIN ratings r ON gs.game_id = r.game_id AND r.critic_id = %(critic_id)s;"
