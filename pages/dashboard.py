@@ -116,16 +116,24 @@ with tab2:
             st.bar_chart(binned_pivot, height=350, color=bar_chart_colors)
             st.caption("Score Distribution by Critic")
 
-    st.subheader("Controversial Critic Analysis")
+    st.subheader("Critic Controversy Ranking")
     critic_controversy_df = conn.query(queries['get_critic_controversy'])
+    critic_controversy_df['Rank'] = critic_controversy_df['controversy_score'].rank(method='min', ascending=False).astype(int)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("##### Most Contrarian")
-        st.dataframe(critic_controversy_df.head(5), hide_index=True)
-    with col2:
-        st.markdown("##### Least Contrarian")
-        st.dataframe(critic_controversy_df.sort_values("controversy_score", ascending=True).head(5), hide_index=True)
+    st.dataframe(
+        critic_controversy_df[['Rank', 'critic_name', 'controversy_score']],
+        column_config={
+            "Rank": "Rank",
+            "critic_name": "Critic",
+            "controversy_score": st.column_config.BarChartColumn(
+                "Controversy Score (Avg. Deviation)",
+                min_value=0,
+                max_value=critic_controversy_df['controversy_score'].max()
+            )
+        },
+        hide_index=True,
+        use_container_width=True
+    )
 
 # --- Upcoming Games Tab ---
 with tab3:
