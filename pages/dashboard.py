@@ -1,26 +1,29 @@
 # pages/dashboard.py
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 # --- Authentication Check ---
-if not st.session_state.get("password_correct", False):
-    st.error("You need to log in first.")
-    st.stop()
+# Assumes you have a utils.py file with check_auth() and get_db_connection()
+# If not, you can revert to the original individual checks.
+try:
+    from utils import check_auth, get_db_connection
+    check_auth()
+    conn = get_db_connection()
+except (ImportError, ModuleNotFoundError):
+    # Fallback for stand-alone execution or if utils.py is not available
+    if not st.session_state.get("password_correct", False):
+        st.error("You need to log in first.")
+        st.stop()
+    try:
+        conn = st.connection("mydb", type="sql")
+    except Exception as e:
+        st.error(f"Database connection failed: {e}")
+        st.stop()
+
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Dashboard", layout="wide")
-st.title("Dashboard & Game Rankings")
-
-# --- Database Connection ---
-try:
-    conn = st.connection("mydb", type="sql")
-except Exception as e:
-    st.error(f"Database connection failed: {e}")
-    st.stop()
+st.title("📊 Dashboard & Game Rankings")
 
 # --- Key Performance Indicators (KPIs) ---
 st.header("Key Metrics")
@@ -39,6 +42,8 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Total Ratings Given", f"{total_ratings}")
 col2.metric("Overall Average Score", f"{avg_score:.2f}")
 col3.metric("Group Participation", f"{participation_rate:.1f}%")
+
+st.divider()
 
 # --- Main Data Query for Rankings ---
 main_query = """
@@ -66,7 +71,6 @@ SELECT
     gs.game_name,
     gs.x_bar as average_score,
     gs.n as number_of_ratings,
-    (gs.n::FLOAT / gs.total_critics::FLOAT) as participation_rate,
     ( (gs.n * gs.x_bar) + (glob.C * glob.m) ) / ( gs.n + glob.C ) AS bayesian_average,
     ( (gs.n * gs.x_bar) + (glob.C * glob.m) ) / ( gs.n + glob.C ) - 
     ( 
@@ -100,50 +104,20 @@ with col4:
 
 st.divider()
 
-# --- Interactive Explanation of the Hybrid Model ---
-st.header("How the Adjustment Works")
-st.info("The final score is a two-step adjustment: first for **Certainty** (Bayesian Average), then for **Consensus** (Sigmoid Penalty).")
-
-# --- Create and Display KDE Plot ---
-@st.cache_data
-def create_kde_plot(df):
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.kdeplot(df['average_score'], ax=ax, fill=True, label='Unadjusted Score', clip=(0, 10))
-    sns.kdeplot(df['final_adjusted_score'], ax=ax, fill=True, label='Final Adjusted Score', clip=(0, 10))
-    ax.set_title("Distribution of Game Scores Before and After Adjustment")
-    ax.set_xlabel("Score")
-    ax.legend()
-    return fig
-
-st.pyplot(create_kde_plot(rankings_df), use_container_width=True)
-
-# --- Dynamic Calculation Display ---
-st.write("Select a game to see its step-by-step calculation:")
-selected_game = st.selectbox("Select a Game:", options=rankings_df['game_name'])
-game_data = rankings_df[rankings_df['game_name'] == selected_game].iloc[0]
-
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("#### Step 1: Adjust for Certainty")
-    c1, c2 = st.columns(2)
-    c1.metric("Raw Average", f"{game_data['average_score']:.2f}")
-    c2.metric("Certainty Score", f"{game_data['bayesian_average']:.2f}", 
-              delta=f"{game_data['bayesian_average'] - game_data['average_score']:.2f} vs. Raw")
-
-with col2:
-    st.markdown("#### Step 2: Adjust for Consensus")
-    penalty = game_data['bayesian_average'] - game_data['final_adjusted_score']
-    c1, c2 = st.columns(2)
-    c1.metric("Penalty", f"-{penalty:.2f}")
-    c2.metric("Final Adjusted Score", f"{game_data['final_adjusted_score']:.2f}")
-
 # --- Full Adjusted Rankings Table ---
 st.header("Full Adjusted Rankings")
 st.write("Click on a column header to sort the rankings.")
 st.dataframe(
     rankings_df[['game_name', 'average_score', 'bayesian_average', 'final_adjusted_score', 'number_of_ratings']],
-    column_config={"game_name": "Game", "average_score": "Unadjusted Avg.", "bayesian_average": "Certainty Score", "final_adjusted_score": "Final Score", "number_of_ratings": "Ratings"},
-    hide_index=True, use_container_width=True
+    column_config={
+        "game_name": "Game", 
+        "average_score": "Unadjusted Avg.", 
+        "bayesian_average": "Certainty Score", 
+        "final_adjusted_score": "Final Score", 
+        "number_of_ratings": "Ratings"
+    },
+    hide_index=True, 
+    use_container_width=True
 )
 
 st.divider()
@@ -165,9 +139,9 @@ if upcoming_games_df.empty:
     st.info("There are currently no games marked as upcoming.")
 else:
     upcoming_games_df = upcoming_games_df.rename(columns={"game_name": "Game", "nominated_by": "Nominated By"})
-    st.dataframe(upcoming_games_df, hide_index=True)
+    st.dataframe(upcoming_games_df, hide_index=True, use_container_width=True)
 
 # --- Log Out Button ---
 if st.button("Log out"):
-    del st.session_state["password_correct"]
+    st.session_state["password_correct"] = False
     st.rerun()
