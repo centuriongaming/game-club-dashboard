@@ -126,9 +126,7 @@ with tab2:
             "Rank": "Rank",
             "critic_name": "Critic",
             "controversy_score": st.column_config.BarChartColumn(
-                "Controversy Score (Avg. Deviation)",
-                min_value=0,
-                max_value=critic_controversy_df['controversy_score'].max()
+                "Controversy Score (Avg. Deviation)"
             )
         },
         hide_index=True,
