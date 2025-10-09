@@ -19,33 +19,48 @@ except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
 
-# --- 1. Key Performance Indicators (KPIs) ---
-st.header("Key Metrics")
+# --- 1. Critic Participation ---
+st.header("Critic Participation")
+st.write("This table shows how many games each critic has rated out of the total available.")
 
-# CORRECTED QUERIES for KPIs
-total_ratings_query = "SELECT COUNT(score) AS total FROM ratings;"
-avg_score_query = "SELECT AVG(score) AS average FROM ratings WHERE score IS NOT NULL;"
-participation_query = """
-    SELECT 
-        (COUNT(r.score)::FLOAT / (SELECT COUNT(*) FROM critics) / (SELECT COUNT(*) FROM games WHERE upcoming IS FALSE))
-    AS rate FROM ratings r;
+# CORRECTED QUERY: Changed c.critic_id to c.id in the JOIN clause
+critic_participation_query = """
+    SELECT
+        c.critic_name,
+        COUNT(r.score) AS ratings_given,
+        (SELECT COUNT(*) FROM games WHERE upcoming IS FALSE) AS total_games,
+        AVG(r.score) AS average_score
+    FROM critics c
+    LEFT JOIN ratings r ON c.id = r.critic_id
+    GROUP BY c.critic_name
+    ORDER BY ratings_given DESC;
 """
+critic_participation_df = conn.query(critic_participation_query)
+critic_participation_df['participation_rate'] = critic_participation_df['ratings_given'] / critic_participation_df['total_games']
+st.dataframe(
+    critic_participation_df,
+    column_config={
+        "average_score": st.column_config.ProgressColumn(
+            "Average Score",
+            format="%.2f",
+            min_value=0,
+            max_value=10,
+        ),
+        "participation_rate": st.column_config.ProgressColumn(
+            "Participation Rate",
+            format="%.1f%%",
+            min_value=0,
+            max_value=1,
+        ),
+    },
+    hide_index=True
+)
 
-# Fetch data
-total_ratings = conn.query(total_ratings_query)['total'][0]
-avg_score = conn.query(avg_score_query)['average'][0]
-participation_rate = conn.query(participation_query)['rate'][0]
 
-# Display metrics
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Ratings Given", f"{total_ratings}")
-col2.metric("Overall Average Score", f"{avg_score:.2f}")
-col3.metric("Group Participation", f"{participation_rate:.1%}")
-
+# --- (Rest of the file remains the same) ---
 
 # --- 2. Recent Activity Feed ---
 st.header("Recent Activity")
-# CORRECTED QUERY for Recent Activity
 recent_activity_query = """
     SELECT
         g.game_name,
@@ -59,18 +74,18 @@ recent_activity_query = """
     LIMIT 5;
 """
 recent_activity_df = conn.query(recent_activity_query)
+recent_activity_df = recent_activity_df.rename(
+    columns={"game_name": "Game", "critic_name": "Critic", "score": "Score"}
+)
 st.dataframe(
     recent_activity_df,
-    column_aliases={"game_name": "Game", "critic_name": "Critic", "score": "Score"},
     hide_index=True
 )
-
 
 # --- 3. Upcoming Games ---
 st.header("Upcoming Games")
 st.write("These games have been nominated but are not yet released or available for review.")
 
-# CORRECTED QUERY for Upcoming Games to show nominator's name
 upcoming_games_query = """
     SELECT 
         g.game_name, 
@@ -86,9 +101,11 @@ upcoming_games_df = conn.query(upcoming_games_query)
 if upcoming_games_df.empty:
     st.info("There are currently no games marked as upcoming.")
 else:
+    upcoming_games_df = upcoming_games_df.rename(
+        columns={"game_name": "Game", "nominated_by": "Nominated By", "release_date": "Release Date"}
+    )
     st.dataframe(
         upcoming_games_df,
-        column_aliases={"game_name": "Game", "nominated_by": "Nominated By", "release_date": "Release Date"},
         hide_index=True
     )
 

@@ -1,3 +1,4 @@
+# pages/analysis.py
 import streamlit as st
 import pandas as pd
 
@@ -6,67 +7,53 @@ if not st.session_state.get("password_correct", False):
     st.error("You need to log in first.")
     st.stop()
 
-st.set_page_config(page_title="Descriptive Analytics")
-st.title("Descriptive Analytics")
-st.write("This page shows high-level statistics based on the raw ratings data.")
+st.set_page_config(page_title="Analysis")
+st.title("Analytical Rankings")
+st.write("This page shows rankings based on the pre-calculated model results.")
 
 # Connect to the database
-conn = st.connection("mydb", type="sql")
+try:
+    conn = st.connection("mydb", type="sql")
+except Exception as e:
+    st.error(f"Database connection failed: {e}")
+    st.stop()
 
-# --- 1. Critic Participation ---
-st.header("Critic Participation")
-st.write("This table shows how many games each critic has rated out of the total available.")
-critic_participation_query = """
-    SELECT
+# --- Query the pre-calculated results from the model_results table ---
+st.header("Critic Analysis")
+critic_analysis_query = """
+    SELECT 
         c.critic_name,
-        COUNT(r.score) AS ratings_given,
-        (SELECT COUNT(*) FROM games) AS total_games,
-        AVG(r.score) AS average_score
-    FROM critics c
-    LEFT JOIN ratings r ON c.critic_id = r.critic_id
-    GROUP BY c.critic_name
-    ORDER BY ratings_given DESC;
+        mr.adjusted_bias,
+        mr.prediction_error
+    FROM model_results mr
+    JOIN critics c ON mr.critic_id = c.id;
 """
-critic_participation_df = conn.query(critic_participation_query)
-critic_participation_df['participation_rate'] = critic_participation_df['ratings_given'] / critic_participation_df['total_games']
-st.dataframe(
-    critic_participation_df,
-    column_config={
-        "average_score": st.column_config.ProgressColumn(
-            "Average Score",
-            format="%.2f",
-            min_value=0,
-            max_value=10,
-        ),
-        "participation_rate": st.column_config.ProgressColumn(
-            "Participation Rate",
-            format="%.1f%%",
-            min_value=0,
-            max_value=1,
-        ),
-    },
-    hide_index=True
-)
+critic_analysis_df = conn.query(critic_analysis_query)
 
+if critic_analysis_df.empty:
+    st.warning("Model results have not been loaded into the database yet.")
+else:
+    tab1, tab2 = st.tabs(["Sentiment Analysis", "Alignment Analysis"])
 
-# --- 2. Nomination Stats ---
-st.header("Nomination Stats")
-st.write("This table shows who has nominated the most games for review.")
-nomination_df = conn.query("SELECT nominated_by, COUNT(*) AS count FROM games GROUP BY nominated_by ORDER BY count DESC;")
-st.dataframe(nomination_df, hide_index=True)
+    with tab1:
+        st.subheader("Most Positive vs. Negative Reviewers")
+        st.write("Based on the 'Adjusted Bias' calculated by the model.")
+        # Sort and display the DataFrame queried from the database
+        st.dataframe(
+            critic_analysis_df[['critic_name', 'adjusted_bias']].sort_values("adjusted_bias", ascending=False),
+            hide_index=True
+        )
 
+    with tab2:
+        st.subheader("Most Aligned vs. Contrarian Reviewers")
+        st.write("Based on the average 'Prediction Error' from the model.")
+        # Sort and display the DataFrame queried from the database
+        st.dataframe(
+            critic_analysis_df[['critic_name', 'prediction_error']].sort_values("prediction_error", ascending=True),
+            hide_index=True
+        )
 
-# --- 3. Overall Score Distribution ---
-st.header("Overall Score Distribution")
-scores_df = conn.query("SELECT score FROM ratings WHERE score IS NOT NULL;")
-
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Total Ratings Given", scores_df['score'].count())
-    st.metric("Overall Average Score", f"{scores_df['score'].mean():.2f}")
-
-with col2:
-    st.subheader("Frequency of Scores")
-    # Ensure scores are treated as a categorical variable for accurate counting
-    score_counts = scores_df['score'].astype(str).value_counts().sort_index()
-    st.bar_chart(score_counts)
+# --- You can add Item Analysis here as well ---
+# st.header("Item Analysis")
+# item_analysis_query = """ ... Query for item biases ... """
+# ...
