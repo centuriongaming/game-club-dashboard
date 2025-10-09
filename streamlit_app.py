@@ -4,19 +4,25 @@ import time
 
 st.set_page_config(page_title="Login", layout="centered")
 
-# --- Login Logic ---
+# --- Login Logic (remains the same) ---
 def check_password():
     """Returns `True` if the password is correct."""
     return st.session_state.get("password") == st.secrets["password"]
 
-# --- Navigation and Page Setup ---
+# --- Page Navigation and Setup ---
 if st.session_state.get("password_correct", False):
-    # User is logged in, so we'll register the dashboard page.
     st.toast("Login successful!")
-    dashboard_page = st.Page(
-        "dashboard.py", title="Main Dashboard"
-    )
-    st.navigation([dashboard_page]).run()
+    
+    # Define all your pages with the new filenames
+    descriptive_page = st.Page("pages/descriptive_analytics.py", title="Descriptive Analytics", default=True)
+    predictions_page = st.Page("pages/predictions.py", title="Predictions")
+    analysis_page = st.Page("pages/analysis.py", title="Analysis")
+
+    # The order in this list determines the sidebar order
+    pg = st.navigation([descriptive_page, predictions_page, analysis_page])
+    
+    pg.run()
+    
 else:
     # User is not logged in, show the login form.
     st.title("Private Dashboard Login")
