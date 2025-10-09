@@ -99,7 +99,7 @@ with col4:
     st.metric(label=worst_adjusted['game_name'], value=f"{worst_adjusted['final_adjusted_score']:.2f}")
 
 st.divider()
-s
+
 # --- Interactive Explanation of the Hybrid Model ---
 st.header("How the Adjustment Works")
 st.info("The final score is a two-step adjustment: first for **Certainty** (Bayesian Average), then for **Consensus** (Sigmoid Penalty).")
