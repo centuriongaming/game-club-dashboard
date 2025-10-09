@@ -89,7 +89,9 @@ with tab2:
             textinfo='label+percent',
             marker=dict(colors=pie_colors)
         )])
-        fig.update_layout(title_text="Nominations by Critic", showlegend=False, height=350, margin=dict(l=1, r=1, t=30, b=1))
+        fig.update_layout(showlegend=False, height=350, margin=dict(l=1, r=1, t=1, b=1))
+        
+        st.markdown("##### Nominations by Critic")
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
@@ -117,6 +119,7 @@ with tab2:
     )
     
     st.subheader("Critic Controversy Ranking")
+    st.caption("The score represents, on average, how many points a critic's rating deviates from the game's consensus average.")
     critic_controversy_df = conn.query(queries['get_critic_controversy'])
     critic_controversy_df['Rank'] = critic_controversy_df['controversy_score'].rank(method='min', ascending=False).astype(int)
     
