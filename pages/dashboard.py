@@ -163,11 +163,15 @@ with tab2:
             
             st.bar_chart(binned_pivot, height=350, color=bar_chart_colors) # Apply consistent colors
             st.caption("Score Distribution by Critic")
-
-    # (Controversy analysis logic remains the same)
     st.subheader("Controversial Critic Analysis")
-    controversy_query = "..."
+    controversy_query = """
+        WITH game_avg AS (SELECT game_id, AVG(score) as avg_game_score FROM ratings WHERE score IS NOT NULL GROUP BY game_id)
+        SELECT c.critic_name, AVG(ABS(r.score - ga.avg_game_score)) as controversy_score
+        FROM ratings r JOIN critics c ON r.critic_id = c.id JOIN game_avg ga ON r.game_id = ga.game_id
+        WHERE r.score IS NOT NULL GROUP BY c.critic_name ORDER BY controversy_score DESC;
+    """
     critic_controversy_df = conn.query(controversy_query)
+    
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("##### Most Contrarian")
