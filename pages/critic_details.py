@@ -10,7 +10,7 @@ queries = load_queries()
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Critic Details", layout="wide")
-st.title("Critic Deep Dive")
+st.title("Critics")
 
 # --- Critic Selection ---
 critics_list_df = conn.query(queries['get_critics_list'])
