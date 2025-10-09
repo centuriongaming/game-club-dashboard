@@ -1,4 +1,5 @@
 # utils.py
+import json
 import streamlit as st
 
 def check_auth():
@@ -21,3 +22,14 @@ def get_db_connection():
     except Exception as e:
         st.error(f"Database connection failed: {e}")
         st.stop()
+
+@st.cache_data
+def load_queries():
+    """Loads queries from the JSON file and joins multi-line queries."""
+    with open('queries.json', 'r') as f:
+        queries = json.load(f)
+    # Join list of strings into a single string for each query
+    for key, value in queries.items():
+        if isinstance(value, list):
+            queries[key] = " ".join(value)
+    return queries
