@@ -37,6 +37,73 @@ col1.metric("Total Ratings Given", f"{total_ratings}")
 col2.metric("Overall Average Score", f"{avg_score:.2f}")
 col3.metric("Group Participation", f"{participation_rate:.1f}%")
 
+st.divider()
+
+# --- Static Game Rankings ---
+st.header("Game Leaderboards")
+
+# --- Adjusted Rankings (Bayesian Average) ---
+st.subheader("Game Rankings by Adjusted Score")
+with st.expander("How is 'Adjusted Score' calculated?"):
+    st.write("""
+        This ranking uses a **Bayesian Average**. It balances a game's raw score with the statistical certainty of that score, 
+        using a 'credibility constant' of **C=2**, as determined by your group's poll.
+    """)
+
+adjusted_rankings_query = """
+WITH global_stats AS (
+    SELECT (SELECT AVG(score) FROM ratings WHERE score IS NOT NULL) as m
+),
+game_stats AS (
+    SELECT
+        g.game_name,
+        COUNT(r.score) as n,
+        AVG(r.score) as x_bar
+    FROM games g
+    JOIN ratings r ON g.id = r.game_id
+    WHERE g.upcoming IS FALSE AND r.score IS NOT NULL
+    GROUP BY g.game_name
+)
+SELECT
+    gs.game_name,
+    gs.x_bar as average_score,
+    gs.n as number_of_ratings,
+    ( (gs.n * gs.x_bar) + (2 * glob.m) ) / ( gs.n + 2 ) AS adjusted_score
+FROM game_stats gs, global_stats glob;
+"""
+adjusted_rankings_df = conn.query(adjusted_rankings_query)
+
+st.write("Click a column header to sort.")
+st.dataframe(
+    adjusted_rankings_df.sort_values("adjusted_score", ascending=False),
+    use_container_width=True,
+    hide_index=True
+)
+
+# --- Controversy Analysis ---
+st.subheader("Game Controversy")
+st.write("Controversy is measured by the standard deviation of scores. A high value means critics disagreed widely.")
+controversy_query = """
+    SELECT 
+        g.game_name,
+        STDDEV(r.score) as controversy_score,
+        COUNT(r.score) as number_of_ratings
+    FROM ratings r
+    JOIN games g ON r.game_id = g.id
+    GROUP BY g.game_name
+    HAVING COUNT(r.score) > 1;
+"""
+controversy_df = conn.query(controversy_query)
+
+st.write("Click a column header to sort.")
+st.dataframe(
+    controversy_df.sort_values("controversy_score", ascending=False),
+    use_container_width=True,
+    hide_index=True
+)
+
+st.divider()
+
 # --- Upcoming Games ---
 st.header("Upcoming Games")
 upcoming_games_query = """
