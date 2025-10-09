@@ -28,6 +28,7 @@ if selected_critic_name:
 
     # Run parameterized queries
     params = {'critic_id': selected_critic_id}
+    print(queries)
     details_df = conn.query(queries['get_critic_details'], params=params)
     nominations_df = conn.query(queries['get_critic_nominations_count'], params=params)
     
