@@ -113,7 +113,7 @@ def display_score_vs_controversy_plot(rankings_df):
     )
     fig.update_layout(xaxis_title="Final Adjusted Score",
                       yaxis_title="Controversy (Std. Dev.)",
-                      yaxis_range=[0, 10] # <-- ADD THIS LINE
+                      xaxis_range=[0, 10] # <-- ADD THIS LINE
                       )
     st.plotly_chart(fig, use_container_width=True)
     st.caption("Hover over a point to see game details. Bubble size represents the number of ratings.")
