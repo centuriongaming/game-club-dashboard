@@ -92,7 +92,9 @@ if selected_game_name:
                     delta={'reference': global_adjusted_avg, 'position': "bottom"},
                     title={'text': "Final Adjusted Score"},
                     gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
-                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
+                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, 
+                                    {'range': [5, 7.5], 'color': "#f1c40f"}, # Corrected this line
+                                    {'range': [7.5, 10], 'color': "#2ecc71"}]}
                 ))
                 adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=10))
                 st.plotly_chart(adj_gauge, use_container_width=True)
