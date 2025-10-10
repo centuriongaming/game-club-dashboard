@@ -18,10 +18,7 @@ def load_dashboard_data(_session):
     full_ratings_scaffold_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
     ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
 
-    # --- THIS LINE IS THE FIX ---
-    # Unpack both DataFrames, discarding the second one which isn't used here.
     rankings_df, _ = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
-    
     critic_names = critics_df['critic_name'].tolist()
 
     total_ratings = len(ratings_df)
@@ -58,25 +55,15 @@ def display_kpis(kpis):
         col3.metric("Group Participation", f"{kpis['group_participation']:.1f}%")
 
 def display_game_showcase(rankings_df):
-    """Display the top and bottom ranked games."""
+    """Display the top and bottom ranked games based on the final adjusted rank."""
     with st.container(border=True):
         st.subheader("Top & Bottom Ranked Games")
         if rankings_df.empty:
             st.info("No game rankings to display yet.")
             return
 
-        col1, col2 = st.columns(2)
-        best_unadjusted = rankings_df.sort_values('Unadjusted Rank').iloc[0]
-        worst_unadjusted = rankings_df.sort_values('Unadjusted Rank', ascending=False).iloc[0]
-        
-        with col1:
-            st.markdown("##### Final Ranking (Adjusted)")
-            st.markdown(f"**First**: {rankings_df.iloc[0]['game_name']}")
-            st.markdown(f"**Last**: {rankings_df.iloc[-1]['game_name']} (#{rankings_df.iloc[-1]['Rank']})")
-        with col2:
-            st.markdown("##### Unadjusted Ranking")
-            st.markdown(f"**First**: {best_unadjusted['game_name']}")
-            st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
+        st.markdown(f"**First**: {rankings_df.iloc[0]['game_name']}")
+        st.markdown(f"**Last**: {rankings_df.iloc[-1]['game_name']} (#{rankings_df.iloc[-1]['Rank']})")
 
 def display_critic_visuals(nomination_df, binned_df, critic_names, color_map):
     """Display the pie and bar charts for critic analysis."""
@@ -138,16 +125,17 @@ def main():
     tab1, tab2, tab3 = st.tabs(["Game Rankings", "Critic Analysis", "Upcoming Games"])
 
     with tab1:
+        # Define the columns to display in the simplified view
+        columns_to_show = ['Rank', 'game_name', 'average_score', 'number_of_ratings']
         st.dataframe(
-            rankings_df,
+            rankings_df[columns_to_show],
             column_config={
-                "Rank": "Rank", "game_name": "Game", "Unadjusted Rank": "Unadjusted Rank",
+                "Rank": "Rank",
+                "game_name": "Game",
                 "average_score": st.column_config.NumberColumn("Avg. Score", format="%.2f"),
-                "number_of_ratings": "Ratings",
-                "final_adjusted_score": st.column_config.NumberColumn("Adjusted Score", format="%.3f"),
+                "number_of_ratings": "# Ratings",
             },
             hide_index=True, use_container_width=True,
-            column_order=['Rank', 'game_name', 'average_score', 'number_of_ratings', 'final_adjusted_score', 'Unadjusted Rank']
         )
 
     with tab2:
