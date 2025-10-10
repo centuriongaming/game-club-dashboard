@@ -70,53 +70,64 @@ with st.container(border=True):
     col1, col2 = st.columns([3, 1])
     with col1:
         g_col1, g_col2 = st.columns(2)
+        
         # --- Raw Score Gauge and Rank ---
         with g_col1:
-            # The delta is now part of the title for placement
+            # --- Logic for Delta ---
             raw_delta = game_info['average_score'] - global_avg_score
             raw_threshold = 0.5 * global_std_dev
             if raw_delta > raw_threshold:
-                delta_symbol = f"▲ {raw_delta:+.2f}"
+                delta_str, delta_color = f"▲ {raw_delta:+.2f}", "#27ae60"  # Green
             elif raw_delta < -raw_threshold:
-                delta_symbol = f"▼ {raw_delta:+.2f}"
+                delta_str, delta_color = f"▼ {raw_delta:+.2f}", "#c0392b"  # Red
             else:
-                delta_symbol = f"~ {raw_delta:+.2f}"
+                delta_str, delta_color = f"~ {raw_delta:+.2f}", "#7f8c8d"  # Gray
 
+            # --- Create Gauge using Annotations for custom layout ---
             raw_gauge = go.Figure(go.Indicator(
-                mode="gauge+number", value=game_info['average_score'],
-                title={'text': f"Raw Average Score<br><span style='font-size:0.8em;color:gray'>{delta_symbol} vs Global Avg</span>"},
+                mode="gauge+number",
+                value=game_info['average_score'],
+                number={'font': {'size': 50}},
                 gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
                        'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
             ))
-            raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=60, b=20))
-            st.plotly_chart(raw_gauge, use_container_width=True)
+            raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
+            
+            # Add annotations for Title, Delta, and Rank
+            raw_gauge.add_annotation(x=0.5, y=1.05, text="Raw Average Score", showarrow=False, font={'size': 16})
+            raw_gauge.add_annotation(x=0.5, y=0.35, text=delta_str, showarrow=False, font={'size': 14, 'color': delta_color})
+            raw_gauge.add_annotation(x=0.5, y=0.15, text=f"Rank #{game_info['Unadjusted Rank']}", showarrow=False, font={'size': 20})
 
-            # Display rank in a larger, centered font
-            st.markdown(f"<h4 style='text-align: center; font-weight: normal;'>Unadjusted Rank #{game_info['Unadjusted Rank']}</h4>", unsafe_allow_html=True)
+            st.plotly_chart(raw_gauge, use_container_width=True)
 
         # --- Adjusted Score Gauge and Rank ---
         with g_col2:
-            # The delta is now part of the title for placement
+            # --- Logic for Delta ---
             adj_delta = game_info['final_adjusted_score'] - global_adjusted_avg
             adj_threshold = 0.5 * global_adjusted_std
             if adj_delta > adj_threshold:
-                adj_delta_symbol = f"▲ {adj_delta:+.2f}"
+                adj_delta_str, adj_delta_color = f"▲ {adj_delta:+.2f}", "#27ae60"
             elif adj_delta < -adj_threshold:
-                adj_delta_symbol = f"▼ {adj_delta:+.2f}"
+                adj_delta_str, adj_delta_color = f"▼ {adj_delta:+.2f}", "#c0392b"
             else:
-                adj_delta_symbol = f"~ {adj_delta:+.2f}"
+                adj_delta_str, adj_delta_color = f"~ {adj_delta:+.2f}", "#7f8c8d"
 
+            # --- Create Gauge using Annotations for custom layout ---
             adj_gauge = go.Figure(go.Indicator(
-                mode="gauge+number", value=game_info['final_adjusted_score'],
-                title={'text': f"Final Adjusted Score<br><span style='font-size:0.8em;color:gray'>{adj_delta_symbol} vs Global Avg</span>"},
+                mode="gauge+number",
+                value=game_info['final_adjusted_score'],
+                number={'font': {'size': 50}},
                 gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
                        'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
             ))
-            adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=60, b=20))
-            st.plotly_chart(adj_gauge, use_container_width=True)
+            adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
             
-            # Display rank in a larger, centered font
-            st.markdown(f"<h4 style='text-align: center; font-weight: normal;'>Adjusted Rank #{game_info['Rank']}</h4>", unsafe_allow_html=True)
+            # Add annotations for Title, Delta, and Rank
+            adj_gauge.add_annotation(x=0.5, y=1.05, text="Final Adjusted Score", showarrow=False, font={'size': 16})
+            adj_gauge.add_annotation(x=0.5, y=0.35, text=adj_delta_str, showarrow=False, font={'size': 14, 'color': adj_delta_color})
+            adj_gauge.add_annotation(x=0.5, y=0.15, text=f"Rank #{game_info['Rank']}", showarrow=False, font={'size': 20})
+
+            st.plotly_chart(adj_gauge, use_container_width=True)
 
     # --- Right-hand metrics ---
     with col2:
