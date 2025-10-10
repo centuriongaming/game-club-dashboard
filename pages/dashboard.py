@@ -91,22 +91,25 @@ def display_controversy_table(session):
         st.info("Not enough data to calculate controversy scores.")
         return
         
-    critic_controversy_df['Rank'] = critic_controversy_df.index + 1
+    # --- THIS SECTION IS THE FIX ---
+    # 1. Sort the DataFrame by score in descending order first.
+    sorted_df = critic_controversy_df.sort_values('final_controversy_score', ascending=False)
     
-    # Sort the DataFrame by the 'Rank' column before displaying
-    critic_controversy_df = critic_controversy_df.sort_values('Rank')
+    # 2. Reset the index to reflect the new sorted order.
+    sorted_df = sorted_df.reset_index(drop=True)
+    
+    # 3. Now, create the 'Rank' column based on the correct order.
+    sorted_df['Rank'] = sorted_df.index + 1
     
     st.dataframe(
-        critic_controversy_df[['Rank', 'critic_name', 'final_controversy_score']],
+        sorted_df[['Rank', 'critic_name', 'final_controversy_score']],
         column_config={
-            # This line ensures the rank is displayed as a whole number
             "Rank": st.column_config.NumberColumn("Rank", format="%d"), 
             "critic_name": "Critic",
             "final_controversy_score": st.column_config.NumberColumn("Final Controversy Score", format="%.3f")
         },
         hide_index=True, use_container_width=True
-    )
-# --- Main Page ---
+    )# --- Main Page ---
 def main():
     """Renders the main dashboard page."""
     check_auth()
