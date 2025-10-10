@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import sqlalchemy as sa
-from utils import check_auth, get_sqla_session, calculate_controversy_scores
+from utils import check_auth, get_sqla_session, calculate_controversy_scores, calculate_custom_game_rankings
 from database_models import Critic, Game, Rating
 
 # --- Page Configuration ---
@@ -16,48 +16,31 @@ session = get_sqla_session()
 
 # --- Cached Data Function ---
 @st.cache_data
+# --- Cached Data Function (CORRECTED VERSION) ---
+@st.cache_data
 def load_dashboard_data(_session):
     """
     Runs all expensive queries and calculations for the dashboard at once.
-    The results are cached to ensure the dashboard is fast and responsive.
     """
     # --- Base Data ---
-    critics_list = _session.query(Critic.critic_name).order_by(Critic.critic_name).all()
-    critic_names = [c[0] for c in critics_list]
+    critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
+    games_df = pd.read_sql(sa.select(Game.id, Game.game_name).where(Game.upcoming == False), _session.bind)
+    ratings_df = pd.read_sql(sa.select(Rating.id, Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
+    
+    # --- Call the new utility function for game rankings ---
+    rankings_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
 
-    # --- KPI Calculations ---
-    total_ratings_val = _session.query(sa.func.count(Rating.id)).scalar()
-    avg_score = _session.query(sa.func.avg(Rating.score)).scalar()
-    
-    total_critics = _session.query(sa.func.count(Critic.id)).scalar()
-    total_games = _session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar()
-    
-    group_participation = (total_ratings_val / (total_critics * total_games)) * 100 if total_critics > 0 and total_games > 0 else 0
+    # --- (The rest of the function for KPIs, other charts, etc., remains the same) ---
+    critic_names = critics_df['critic_name'].tolist()
+    total_ratings_val = len(ratings_df)
+    avg_score = ratings_df['score'].mean() if not ratings_df.empty else 0
+    group_participation = (total_ratings_val / (len(critics_df) * len(games_df))) * 100 if len(critics_df) > 0 and len(games_df) > 0 else 0
     kpis = {
         "total_ratings": total_ratings_val,
         "avg_score": avg_score,
         "group_participation": group_participation
     }
 
-    # --- Game Ranking Calculation ---
-    game_stats_subq = sa.select(
-        Game.game_name, sa.func.count(Rating.score).label("n"), sa.func.avg(Rating.score).label("x_bar")
-    ).join(Rating, Game.id == Rating.game_id).where(Game.upcoming == False, Rating.score.is_not(None)).group_by(Game.game_name).subquery()
-    global_avg_score = _session.query(sa.func.avg(Rating.score)).scalar() or 0
-    
-    rankings_stmt = sa.select(
-        game_stats_subq.c.game_name,
-        game_stats_subq.c.x_bar.label("average_score"),
-        game_stats_subq.c.n.label("number_of_ratings"),
-        ((game_stats_subq.c.n * game_stats_subq.c.x_bar + 2 * global_avg_score) / (game_stats_subq.c.n + 2)).label("final_adjusted_score")
-    )
-    rankings_df = pd.read_sql(rankings_stmt, _session.bind)
-    if not rankings_df.empty:
-        rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
-        rankings_df['Rank'] = rankings_df.index + 1
-        rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
-
-    # --- Critic Analysis Calculations ---
     nomination_stmt = sa.select(Critic.critic_name, sa.func.count(Game.id).label("nomination_count")).join(Game, Critic.id == Game.nominated_by, isouter=True).group_by(Critic.critic_name)
     nomination_df = pd.read_sql(nomination_stmt, _session.bind).set_index('critic_name').reindex(critic_names).fillna(0).reset_index()
 
@@ -66,14 +49,14 @@ def load_dashboard_data(_session):
     
     participation_stmt = sa.select(Critic.critic_name, sa.func.count(Rating.score).label("ratings_given"), sa.func.avg(Rating.score).label("average_score")).join(Rating, Critic.id == Rating.critic_id, isouter=True).group_by(Critic.critic_name).order_by(sa.desc("ratings_given"))
     critic_participation_df = pd.read_sql(participation_stmt, _session.bind)
-    if total_games > 0:
-        critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / total_games) * 100
+    if not games_df.empty:
+        critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / len(games_df)) * 100
 
-    # --- Upcoming Games ---
     upcoming_stmt = sa.select(Game.game_name, Critic.critic_name.label("nominated_by")).join(Critic, Game.nominated_by == Critic.id, isouter=True).where(Game.upcoming == True).order_by(Game.game_name)
     upcoming_games_df = pd.read_sql(upcoming_stmt, _session.bind)
 
     return kpis, rankings_df, nomination_df, binned_df, critic_participation_df, upcoming_games_df, critic_names
+
 
 # --- Page Content ---
 st.title("Dashboard & Leaderboards")
