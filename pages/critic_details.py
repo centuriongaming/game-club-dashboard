@@ -47,24 +47,22 @@ if selected_critic_name:
     
     total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == selected_critic_id).scalar()
     
-    # Fetch the observed controversy data for all critics
-    observed_controversy_df = pd.read_sql(sa.text(queries['get_critic_observed_controversy']), session.bind)
+    # FIX: Use the correct key from queries.json
+    controversy_breakdown_df = pd.read_sql(sa.text(queries['get_critic_controversy_breakdown']), session.bind)
     
+    # Check if critic exists in the breakdown dataframe
+    if selected_critic_name in controversy_breakdown_df['critic_name'].values:
+        critic_breakdown = controversy_breakdown_df[controversy_breakdown_df['critic_name'] == selected_critic_name].iloc[0]
+        final_controversy_score = critic_breakdown['controversy_score']
+    else:
+        # Handle case for critics with no ratings (they won't be in the controversy query result)
+        critic_breakdown = {'observed_score': 0, 'n': 0, 'prior_score': controversy_breakdown_df['prior_score'].mean(), 'credibility_constant': 15, 'controversy_score': controversy_breakdown_df['prior_score'].mean()}
+        final_controversy_score = critic_breakdown['prior_score']
+
+
     # --- Calculations & Scorecard ---
     critic_ratings = details_df.dropna(subset=['critic_score'])
-    
-    # FIX 4: Correctly calculate n (number of rated games) for the selected critic
     n = len(critic_ratings)
-
-    # Get the critic's specific observed score
-    critic_observed = observed_controversy_df.loc[observed_controversy_df['critic_name'] == selected_critic_name].iloc[0]
-    observed_score = critic_observed['observed_score']
-    
-    # Perform the final Bayesian calculation in Python for accuracy
-    prior_score = observed_controversy_df['observed_score'].mean()
-    C = 15 # Credibility constant from your queries.json
-    credibility_weight = n / (n + C) if (n + C) > 0 else 0
-    final_controversy_score = (credibility_weight * observed_score) + ((1 - credibility_weight) * prior_score)
     
     participation_rate = (n / len(details_df)) * 100 if len(details_df) > 0 else 0
     avg_score = critic_ratings['critic_score'].mean() if not critic_ratings.empty else 0
@@ -79,16 +77,21 @@ if selected_critic_name:
 
     # --- Controversy Score Breakdown Expander ---
     with st.expander("**Controversy Score Breakdown**"):
+        observed_score = critic_breakdown['observed_score']
+        n_calc = critic_breakdown['n'] # Use n from the query for the breakdown display
+        prior_score = critic_breakdown['prior_score']
+        C = critic_breakdown['credibility_constant']
+        credibility_weight = n_calc / (n_calc + C) if (n_calc + C) > 0 else 0
+
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("1. Observed Score", f"{observed_score:.3f}", help="The critic's raw, un-adjusted controversy score.")
-        col2.metric("2. Games Rated (n)", f"{n}", help="The number of games rated by the critic, used to determine credibility.")
+        col2.metric("2. Games Rated (n)", f"{n_calc}", help="The number of games rated by the critic, used to determine credibility.")
         col3.metric("3. Group Average", f"{prior_score:.3f}", help="The average controversy score for the entire group.")
         col4.metric("Credibility Weight", f"{credibility_weight:.1%}", help=f"The weight given to the observed score. Calculated as n / (n + C), where C is {C}.")
         
         st.markdown("---")
         st.markdown("##### Final Calculation")
-        # FIX 1: Use markdown for reliable rendering
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calculation_str = f"= ({credibility_weight:.2f} * {observed_score:.3f}) + ({1-credibility_weight:.2f} * {prior_score:.3f}) = **{final_controversy_score:.3f}**"
         st.markdown(calculation_str)
@@ -99,4 +102,5 @@ if selected_critic_name:
     critic_ratings['deviation'] = (critic_ratings['critic_score'] - critic_ratings['avg_game_score']).abs()
     most_contrarian_ratings = critic_ratings.sort_values('deviation', ascending=False).head(10)
     details_df['play_decision_diff'] = (details_df['critic_score'].notna().astype(int) - details_df['participation_rate']).abs()
-    most_contrarian_plays = details_df.sort
+    most_contrarian_plays = details_df.sort_values('play_decision_diff', ascending=False).head(10)
+    most_contrarian_plays['participation_rate_percent']

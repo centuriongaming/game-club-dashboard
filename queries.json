@@ -42,7 +42,7 @@
     "SELECT",
     "  oc.critic_name,",
     "  ((oc.n::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * oc.observed_score) + (((SELECT C FROM CredibilityConstant)::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * gc.prior_score) AS controversy_score",
-    "FROM ObservedControversy oc, GlobalControversy gc",
+    "FROM ObservedControversy oc CROSS JOIN GlobalControversy gc",
     "ORDER BY controversy_score DESC"
   ],
   "get_critic_controversy_breakdown": [
@@ -92,6 +92,6 @@
     "  gc.prior_score,",
     "  (SELECT C FROM CredibilityConstant) AS credibility_constant,",
     "  ((oc.n::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * oc.observed_score) + (((SELECT C FROM CredibilityConstant)::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * gc.prior_score) AS controversy_score",
-    "FROM ObservedControversy oc, GlobalControversy gc"
+    "FROM ObservedControversy oc CROSS JOIN GlobalControversy gc"
   ]
 }
