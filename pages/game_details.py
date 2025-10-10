@@ -7,11 +7,11 @@ import numpy as np
 from scipy import stats
 
 # --- Caching, Security, and Data Loading ---
+
 @st.cache_data
 def load_data(_conn):
     """
     Loads all necessary data at once and caches it.
-    This is much faster and more secure than running separate queries on each interaction.
     """
     games_df = _conn.query("SELECT id, game_name FROM games WHERE upcoming IS FALSE ORDER BY game_name;")
     critics_df = _conn.query("SELECT id, critic_name FROM critics ORDER BY critic_name;")
@@ -21,10 +21,12 @@ def load_data(_conn):
     critic_avg_scores = ratings_df.groupby('critic_id')['score'].mean().reset_index().rename(columns={'score': 'critic_avg_score'})
     critics_df = pd.merge(critics_df, critic_avg_scores, left_on='id', right_on='critic_id', how='left')
     
-    # Calculate the global average score across all ratings
+    # Calculate global average and standard deviation
     global_avg_score = ratings_df['score'].mean()
+    global_std_dev = ratings_df['score'].std()
     
-    return games_df, critics_df, ratings_df, global_avg_score
+    return games_df, critics_df, ratings_df, global_avg_score, global_std_dev
+
 
 # --- Authentication & Page Setup ---
 if not st.session_state.get("password_correct", False):
@@ -37,7 +39,8 @@ st.title("Game Deep Dive")
 # --- Database Connection & Data Loading ---
 try:
     conn = st.connection("mydb", type="sql")
-    games_df, critics_df, ratings_df, global_avg_score = load_data(conn)
+    # Unpack the new global_std_dev value
+    games_df, critics_df, ratings_df, global_avg_score, global_std_dev = load_data(conn)
 except Exception as e:
     st.error(f"Database connection or data loading failed: {e}")
     st.stop()
@@ -146,16 +149,55 @@ if selected_game_name:
         # Merge critic data to get names and their average scores
         detailed_scores_df = pd.merge(game_ratings_df, critics_df, left_on='critic_id', right_on='id')
         detailed_scores_df['delta'] = detailed_scores_df['score'] - detailed_scores_df['critic_avg_score']
+
+        # --- Highlighting Logic ---
+        threshold = 0.5 * global_std_dev
+
+        def format_delta_with_symbol(delta):
+            """Applies a symbol based on the delta value."""
+            if delta > threshold:
+                return f"▲ {delta:+.2f}"
+            elif delta < -threshold:
+                return f"▼ {delta:+.2f}"
+            else:
+                return f"~ {delta:+.2f}"
+
+        def style_delta_column(val_str):
+            """Applies a color based on the symbol in the string."""
+            if val_str.startswith('▲'):
+                return 'color: #27ae60;' # Green
+            elif val_str.startswith('▼'):
+                return 'color: #c0392b;' # Red
+            else:
+                return 'color: #7f8c8d;' # Gray
+        
+        # Create the new display column
+        detailed_scores_df['vs. Their Avg.'] = detailed_scores_df['delta'].apply(format_delta_with_symbol)
+        
+        # Apply the styling
+        styled_df = detailed_scores_df.style.map(style_delta_column, subset=['vs. Their Avg.'])
         
         st.dataframe(
-            detailed_scores_df[['critic_name', 'score', 'critic_avg_score', 'delta']],
+            styled_df,
             column_config={
                 "critic_name": "Critic",
                 "score": st.column_config.ProgressColumn("Their Score", format="%.1f", min_value=0, max_value=10),
-                "critic_avg_score": st.column_config.NumberColumn("Critic's Avg.", help="This critic's average score across all games they've rated.", format="%.2f"),
-                "delta": st.column_config.NumberColumn("vs. Their Avg.", help="How this score compares to the critic's personal average.", format="%+.2f")
+                "critic_avg_score": st.column_config.NumberColumn("Critic's Avg.", help="This critic's average score across all games.", format="%.2f"),
+                "vs. Their Avg.": "vs. Their Avg."
             },
-            hide_index=True, use_container_width=True
+            hide_index=True, use_container_width=True,
+            column_order=['critic_name', 'score', 'critic_avg_score', 'vs. Their Avg.']
+        )
+        
+        # Add the explanation/legend
+        st.markdown(
+            f"""
+            <small><b>Legend:</b><br>
+            <b>▲ Higher</b>: Score is more than {threshold:.2f} points above the critic's personal average.<br>
+            <b>▼ Lower</b>: Score is more than {threshold:.2f} points below their personal average.<br>
+            <b>~ About the Same</b>: Score is within {threshold:.2f} points of their personal average.</small>
+            """,
+            unsafe_allow_html=True
         )
         
     with tab3:
