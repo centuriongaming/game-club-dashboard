@@ -59,18 +59,13 @@ def load_page_data(_session):
     observed_df = observed_df.fillna({'n': 0, 'avg_score_deviation': 0, 'avg_play_deviation': 0})
     observed_df['observed_score'] = (0.5 * observed_df['avg_score_deviation']) + (0.5 * observed_df['avg_play_deviation'])
     
-    # --- THIS SECTION IS UPDATED ---
     # 8. Apply Bayesian Shrinkage
     prior_score = observed_df['observed_score'].mean()
-    
-    # Dynamically calculate the credibility threshold
-    total_games = len(all_games_df)
-    credibility_threshold = max(1, total_games // 2)
-
-    observed_df['credibility_weight'] = observed_df['n'] / (observed_df['n'] + credibility_threshold)
+    C = 15
+    observed_df['credibility_weight'] = observed_df['n'] / (observed_df['n'] + C)
     observed_df['final_controversy_score'] = (observed_df['credibility_weight'] * observed_df['observed_score']) + ((1 - observed_df['credibility_weight']) * prior_score)
     observed_df['prior_score'] = prior_score
-    observed_df['credibility_threshold'] = credibility_threshold # Store the dynamic value
+    observed_df['credibility_constant'] = C
 
     return observed_df, scaffold
 
@@ -90,35 +85,22 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
     with st.expander("**Controversy Score Breakdown**", expanded=True):
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
 
-        threshold = critic_breakdown['credibility_threshold']
-        weight = games_rated_count / (games_rated_count + threshold) if (games_rated_count + threshold) > 0 else 0
+        C = critic_breakdown['credibility_constant']
+        weight = games_rated_count / (games_rated_count + C) if (games_rated_count + C) > 0 else 0
         final_score = (weight * critic_breakdown['observed_score']) + ((1 - weight) * critic_breakdown['prior_score'])
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("1. Observed Score", f"{critic_breakdown['observed_score']:.3f}", help="A raw measure of this critic's tendency to deviate from the group, based on both their rating scores and participation habits.")
         c2.metric("2. Games Rated (n)", f"{games_rated_count:.0f}", help="The number of games rated, used to calculate credibility.")
         c3.metric("3. Group Average", f"{critic_breakdown['prior_score']:.3f}", help="The average controversy score of all critics, used as a baseline.")
-        c4.metric("Credibility Weight", f"{weight:.1%}", help=f"The weight given to the critic's Observed Score. Calculated as n / (n + Threshold), where the threshold is dynamically set to {threshold} (half the total games).")
+        c4.metric("Credibility Weight", f"{weight:.1%}", help=f"The weight given to the critic's Observed Score. Calculated as n / (n + C), where C is a constant set to {C}.")
         
         st.markdown("---")
         st.markdown("##### Final Calculation")
-        st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + ((1 - \text{Weight}) \times \text{Group Average}) $$')
+        st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
+        calc_str = f"= ({weight:.2f} × {critic_breakdown['observed_score']:.3f}) + ({1-weight:.2f} × {critic_breakdown['prior_score']:.3f}) = **{final_score:.3f}**"
+        st.markdown(calc_str)
 
-        # --- THIS SECTION IS UPDATED FOR CLARITY ---
-        # Create a markdown table to show the calculation intuitively.
-        part1 = weight * critic_breakdown['observed_score']
-        part2 = (1 - weight) * critic_breakdown['prior_score']
-        
-        calculation_table = f"""
-        | Component | Weight | Value | Result |
-        | :--- | :--- | :--- | :--- |
-        | **Observed Score** | `{weight:.1%}` | × `{critic_breakdown['observed_score']:.3f}` | `= {part1:.3f}` |
-        | **Group Average** | `{1-weight:.1%}`| × `{critic_breakdown['prior_score']:.3f}` | `= {part2:.3f}` |
-        | **Final Score** | | **Sum →** | **`= {final_score:.3f}`** |
-        """
-        st.markdown(calculation_table)
-        
-            
 def display_analysis_tabs(critic_ratings, details_df):
     """Renders the three tabs with detailed breakdown tables."""
     st.subheader("Detailed Analysis")
