@@ -190,14 +190,20 @@ def main():
     st.set_page_config(page_title="Game Details", layout="wide")
     st.markdown("""
     <style>
+    /* This centers the containers for the label and the value */
     div[data-testid="stMetric"] {
         display: flex;
         flex-direction: column;
         align-items: center;
     }
+
+    /* This centers the text inside the value container */
+    div[data-testid="stMetricValue"] {
+        text-align: center;
+    }
     </style>
     """, unsafe_allow_html=True)
-    st.title("Game Deep Dive")
+    st.title("Game Details")
 
     # --- Database Connection & Data Loading ---
     try:
