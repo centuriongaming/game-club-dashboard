@@ -105,11 +105,46 @@ def display_scorecard(game_info, game_ratings_df, num_total_critics, global_stat
                 help="The standard deviation of all scores this game received. A low number indicates critics generally agree on the score (consensus), while a high number indicates significant disagreement (controversy)."
             )
 
-def display_ranking_breakdown(game_info):
+def display_ranking_breakdown(game_info, critics_df, skipper_ids):
     """Displays the expander explaining the Bayesian shrinkage calculation."""
     st.subheader("Ranking Breakdown")
-    with st.expander("How the Final Adjusted Score is Calculated", expanded=False):
-        st.markdown("The final score is a weighted average that is 'shrunk' towards a baseline, penalizing games for not being widely played.")
+    with st.expander("How the Final Adjusted Score is Calculated", expanded=True):
+        
+        # --- New Detailed Prior Calculation Section ---
+        st.markdown("##### How This Game's 'Pessimistic Prior' is Calculated")
+        st.markdown(
+            "The prior is the average of the personal 'pessimistic scores' from each critic who skipped this game. "
+            "Each critic's score is calculated as: `Their Average Score - Their Standard Deviation`."
+        )
+
+        skipper_df = critics_df[critics_df['id'].isin(skipper_ids)].copy()
+        
+        # Ensure stats are not NaN for the calculation
+        skipper_df['critic_avg'] = skipper_df['critic_avg'].fillna(0)
+        skipper_df['critic_std'] = skipper_df['critic_std'].fillna(0)
+        
+        skipper_df['pessimistic_score'] = skipper_df['critic_avg'] - skipper_df['critic_std']
+
+        st.dataframe(
+            skipper_df[['critic_name', 'critic_avg', 'critic_std', 'pessimistic_score']],
+            column_config={
+                "critic_name": "Skipping Critic",
+                "critic_avg": st.column_config.NumberColumn("Their Avg", format="%.2f"),
+                "critic_std": st.column_config.NumberColumn("Their Std Dev", format="%.2f"),
+                "pessimistic_score": st.column_config.NumberColumn("Pessimistic Score", format="%.3f")
+            },
+            use_container_width=True, hide_index=True
+        )
+
+        sum_of_priors = skipper_df['pessimistic_score'].sum()
+        num_skippers = len(skipper_df)
+        final_prior = game_info['pessimistic_prior']
+        
+        st.markdown("###### Final Prior Calculation:")
+        st.markdown(fr'$$ \frac{{\text{{Sum of Pessimistic Scores}}}}{{\text{{Number of Skippers}}}} = \frac{{{sum_of_priors:.3f}}}{{{num_skippers}}} = \textbf{{{final_prior:.3f}}} $$')
+        
+        st.markdown("---")
+        st.markdown("##### This Game's Final Score Calculation")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("1. Raw Average", f"{game_info['average_score']:.3f}")
         c2.metric("2. Ratings (n)", f"{game_info['number_of_ratings']}")
@@ -261,7 +296,11 @@ def main():
 
     # --- Render Page Components ---
     display_scorecard(game_info, game_ratings_df, len(critics_with_stats_df), global_stats)
-    display_ranking_breakdown(game_info)
+    all_critic_ids = set(critics_with_stats_df['id'])
+    rated_critic_ids = set(game_ratings_with_critics['critic_id'])
+    skipper_ids = all_critic_ids - rated_critic_ids
+    
+    display_ranking_breakdown(game_info, critics_with_stats_df, skipper_ids)
 
     st.subheader("Detailed Analysis")
     tab1, tab2, tab3 = st.tabs(["Score Distribution", "Critic Ratings", "Who Skipped?"])
