@@ -3,6 +3,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
+from scipy import stats
 
 # --- Caching, Security, and Data Loading ---
 @st.cache_data
@@ -30,7 +32,7 @@ if not st.session_state.get("password_correct", False):
     st.stop()
 
 st.set_page_config(page_title="Game Details", layout="wide")
-st.title("🎮 Game Deep Dive")
+st.title("Game Deep Dive")
 
 # --- Database Connection & Data Loading ---
 try:
@@ -48,7 +50,7 @@ if selected_game_name:
     selected_game_id = game_map[selected_game_name]
     
     # --- Filter Data for Selected Game (Fast, in-memory operation) ---
-    game_ratings_df = ratings_df[ratings_df['game_id'] == selected_game_id]
+    game_ratings_df = ratings_df[ratings_df['game_id'] == selected_game_id].dropna(subset=['score'])
     
     if game_ratings_df.empty:
         st.warning(f"No ratings have been submitted for **{selected_game_name}** yet.")
@@ -65,10 +67,11 @@ if selected_game_name:
     with st.container(border=True):
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
-            # Gauge Chart for Average Score
+            # Gauge Chart with Delta for clear comparison
             gauge = go.Figure(go.Indicator(
-                mode = "gauge+number",
+                mode = "number+gauge+delta",
                 value = avg_score,
+                delta = {'reference': global_avg_score, 'position': "bottom"},
                 domain = {'x': [0, 1], 'y': [0, 1]},
                 title = {'text': "Average Score vs. Global Average"},
                 gauge = {
@@ -77,12 +80,8 @@ if selected_game_name:
                     'steps': [
                         {'range': [0, 5], 'color': "#e74c3c"},
                         {'range': [5, 7.5], 'color': "#f1c40f"},
-                        {'range': [7.5, 10], 'color': "#2ecc71"}],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 4},
-                        'thickness': 0.75,
-                        'value': global_avg_score
-                    }}))
+                        {'range': [7.5, 10], 'color': "#2ecc71"}]
+                    }))
             gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(gauge, use_container_width=True)
 
@@ -95,20 +94,34 @@ if selected_game_name:
             st.metric("Global Average", f"{global_avg_score:.2f}", help="The average score across all ratings for all games.")
     
     # --- Detailed Tabs ---
-    tab1, tab2, tab3 = st.tabs(["📊 Score Distribution", "🧑‍⚖️ Critic Ratings", "❓ Who Hasn't Rated?"])
+    tab1, tab2, tab3 = st.tabs(["Score Distribution", "Critic Ratings", "Who Skipped?"])
 
     with tab1:
         st.subheader("How the Scores Broke Down")
-        score_counts = game_ratings_df['score'].value_counts().sort_index()
         
-        fig = px.bar(
-            score_counts, 
-            x=score_counts.index, 
-            y=score_counts.values,
-            labels={'x': 'Score', 'y': 'Number of Critics'},
-            text_auto=True
+        # Kernel Density Estimate (KDE) plot
+        scores = game_ratings_df['score']
+        kde = stats.gaussian_kde(scores)
+        x_range = np.linspace(0, 10, 100)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=x_range, y=kde(x_range),
+            mode='lines', fill='tozeroy',
+            line_shape='spline',
+            line=dict(color='#3498db')
+        ))
+        fig.add_trace(go.Scatter(
+            x=scores, y=[0.005] * len(scores),
+            mode='markers',
+            marker=dict(symbol='line-ns-open', color='black', size=10),
+            name='Individual Ratings'
+        ))
+        fig.update_layout(
+            showlegend=False,
+            xaxis_title="Score",
+            yaxis_title="Density",
+            xaxis=dict(range=[0, 10])
         )
-        fig.update_layout(xaxis=dict(tickmode='linear')) # Ensures all integer scores are shown
         st.plotly_chart(fig, use_container_width=True)
         
         # Highlight highest and lowest scores
@@ -132,7 +145,7 @@ if selected_game_name:
             detailed_scores_df[['critic_name', 'score', 'critic_avg_score', 'delta']],
             column_config={
                 "critic_name": "Critic",
-                "score": st.column_config.ProgressColumn("Their Score", min_value=0, max_value=10),
+                "score": st.column_config.ProgressColumn("Their Score", format="%.1f", min_value=0, max_value=10),
                 "critic_avg_score": st.column_config.NumberColumn("Critic's Avg.", help="This critic's average score across all games they've rated.", format="%.2f"),
                 "delta": st.column_config.NumberColumn("vs. Their Avg.", help="How this score compares to the critic's personal average.", format="%+.2f")
             },
