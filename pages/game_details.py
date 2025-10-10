@@ -1,9 +1,10 @@
-# pages/game_details.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 from scipy import stats
+# Import the ranking function from your utils file
+from utils import calculate_custom_game_rankings
 
 # --- Caching, Security, and Data Loading ---
 @st.cache_data
@@ -13,22 +14,20 @@ def load_data(_conn):
     """
     games_df = _conn.query("SELECT id, game_name FROM games WHERE upcoming IS FALSE ORDER BY game_name;")
     critics_df = _conn.query("SELECT id, critic_name FROM critics ORDER BY critic_name;")
-    
-    # Load the full ratings scaffold from the database
     full_ratings_scaffold_df = _conn.query("SELECT critic_id, game_id, score FROM ratings;")
-
-    # Create the true ratings_df by dropping rows where the score is NULL
     ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
     
-    # Pre-calculate each critic's average and std dev
+    # Pre-calculate each critic's stats
     critic_stats = ratings_df.groupby('critic_id')['score'].agg(['mean', 'std']).rename(columns={'mean': 'critic_avg', 'std': 'critic_std'}).fillna(0)
     critics_with_stats_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id', how='left')
     
-    # Calculate global stats
+    # Calculate global stats and the full rankings
     global_avg_score = ratings_df['score'].mean()
     global_std_dev = ratings_df['score'].std()
+    rankings_df = calculate_custom_game_rankings(games_df, critics_with_stats_df, ratings_df)
+    global_adjusted_avg = rankings_df['final_adjusted_score'].mean()
     
-    return games_df, critics_with_stats_df, ratings_df, global_avg_score, global_std_dev
+    return games_df, critics_with_stats_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg
 
 # --- Authentication & Page Setup ---
 if not st.session_state.get("password_correct", False):
@@ -41,7 +40,7 @@ st.title("Game Deep Dive")
 # --- Database Connection & Data Loading ---
 try:
     conn = st.connection("mydb", type="sql")
-    games_df, critics_df, ratings_df, global_avg_score, global_std_dev = load_data(conn)
+    games_df, critics_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg = load_data(conn)
 except Exception as e:
     st.error(f"Database connection or data loading failed: {e}")
     st.stop()
@@ -52,7 +51,6 @@ selected_game_name = st.selectbox("Select a Game to Analyze:", game_map.keys())
 
 if selected_game_name:
     selected_game_id = game_map[selected_game_name]
-    
     game_ratings_df = ratings_df[ratings_df['game_id'] == selected_game_id]
     
     if game_ratings_df.empty:
@@ -63,56 +61,48 @@ if selected_game_name:
     avg_score = game_ratings_df['score'].mean()
     controversy = game_ratings_df['score'].std()
     ratings_count = len(game_ratings_df)
-    play_rate = (ratings_count / len(critics_df)) * 100
     
-    # Calculate components for the adjusted score
-    n_skipped = len(critics_df) - ratings_count
-    if n_skipped > 0:
-        rater_ids = set(game_ratings_df['critic_id'])
-        skipper_ids = set(critics_df['id']) - rater_ids
-        skipper_stats = critics_df[critics_df['id'].isin(skipper_ids)]
-        skipper_stats['pessimistic_score'] = skipper_stats['critic_avg'] - skipper_stats['critic_std']
-        pessimistic_prior = skipper_stats['pessimistic_score'].mean()
-    else:
-        pessimistic_prior = global_avg_score
+    # Get the game's rank info from the pre-calculated dataframe
+    game_rank_info = rankings_df[rankings_df['game_name'] == selected_game_name].iloc[0]
+    final_adjusted_score = game_rank_info['final_adjusted_score']
+    unadjusted_rank = game_rank_info['Unadjusted Rank']
+    adjusted_rank = game_rank_info['Rank']
     
-    final_adjusted_score = ((ratings_count * avg_score) + (n_skipped * pessimistic_prior)) / (ratings_count + n_skipped) if (ratings_count + n_skipped) > 0 else 0
-
     # --- Main Scorecard ---
     st.subheader(f"Overall Scorecard for {selected_game_name}")
     with st.container(border=True):
-        # NEW: Updated layout for two gauges
         col1, col2 = st.columns([3, 1])
         with col1:
             g_col1, g_col2 = st.columns(2)
             # Gauge 1: Raw Average Score
             with g_col1:
                 raw_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number", value = avg_score,
-                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    mode = "gauge+number+delta", value = avg_score,
+                    delta = {'reference': global_avg_score, 'position': "bottom"},
                     title = {'text': "Raw Average Score"},
-                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
+                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"}, # Blue color
                         'steps': [ {'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]
                     }))
                 raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(raw_gauge, use_container_width=True)
-            # NEW: Gauge 2: Final Adjusted Score
+            # Gauge 2: Final Adjusted Score
             with g_col2:
                 adj_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number", value = final_adjusted_score,
-                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    mode = "gauge+number+delta", value = final_adjusted_score,
+                    delta = {'reference': global_adjusted_avg, 'position': "bottom"},
                     title = {'text': "Final Adjusted Score"},
-                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#9b59b6"}, # New color
+                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"}, # Same blue color
                         'steps': [ {'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]
                     }))
                 adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(adj_gauge, use_container_width=True)
 
         with col2:
+            st.metric("Unadjusted Rank", f"#{unadjusted_rank}")
+            st.metric("Adjusted Rank", f"#{adjusted_rank}")
             st.metric("Number of Ratings", f"{ratings_count}")
-            st.metric("Play Rate", f"{play_rate:.1f}%", help="The percentage of all critics who rated this game.")
-            st.metric("Controversy (Std Dev)", f"{controversy:.3f}" if controversy else "N/A", help="Standard deviation of scores. Higher means more disagreement.")
-            st.metric("Global Average", f"{global_avg_score:.2f}", help="The average score across all ratings for all games.")
+            st.metric("Controversy (Std Dev)", f"{controversy:.3f}" if controversy else "N/A")
+
 
     # --- Adjusted Score Breakdown ---
     st.subheader("Ranking Breakdown")
@@ -134,7 +124,6 @@ if selected_game_name:
     tab1, tab2, tab3 = st.tabs(["Score Distribution", "Critic Ratings", "Who Skipped?"])
 
     with tab1:
-        # ... (code for KDE plot and highest/lowest scores is unchanged)
         scores = game_ratings_df['score']
         kde = stats.gaussian_kde(scores)
         x_range = np.linspace(0, 10, 100)
