@@ -92,6 +92,10 @@ def display_controversy_table(session):
         return
         
     critic_controversy_df['Rank'] = critic_controversy_df.index + 1
+    
+    # Sort the DataFrame by the 'Rank' column before displaying
+    critic_controversy_df = critic_controversy_df.sort_values('Rank')
+    
     st.dataframe(
         critic_controversy_df[['Rank', 'critic_name', 'final_controversy_score']],
         column_config={
@@ -100,7 +104,6 @@ def display_controversy_table(session):
         },
         hide_index=True, use_container_width=True
     )
-
 # --- Main Page ---
 def main():
     """Renders the main dashboard page."""
