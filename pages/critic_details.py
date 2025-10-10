@@ -37,7 +37,10 @@ if selected_critic_name:
 
     # 4. Build a "Scaffold" of every critic-game pair
     scaffold = critics_df.merge(all_games_df, how='cross')
-    scaffold = pd.merge(scaffold, game_stats, on='game_id', how='left')
+    
+    # FIX: Drop the redundant 'game_name' column from game_stats before merging to prevent a name collision
+    scaffold = pd.merge(scaffold, game_stats.drop(columns=['game_name']), on='game_id', how='left')
+    
     scaffold = pd.merge(scaffold, critic_stats, left_on='id', right_on='critic_id', how='left')
     scaffold = pd.merge(scaffold, all_ratings_df, on=['critic_id', 'game_id'], how='left')
     scaffold['n'] = scaffold['n'].fillna(0).astype(int)
@@ -84,7 +87,7 @@ if selected_critic_name:
         col3.metric("Final Controversy Score", f"{critic_breakdown['final_controversy_score']:.3f}")
         col4.metric("Games Nominated", f"{total_nominations}")
 
-    # --- Controversy Score Breakdown Expander ---
+    # (Expander and Tabs code remains the same)
     with st.expander("**Controversy Score Breakdown**"):
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
         col1, col2, col3, col4 = st.columns(4)
@@ -98,18 +101,14 @@ if selected_critic_name:
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calculation_str = f"= ({critic_breakdown['credibility_weight']:.2f} * {critic_breakdown['observed_score']:.3f}) + ({1-critic_breakdown['credibility_weight']:.2f} * {prior_score:.3f}) = **{critic_breakdown['final_controversy_score']:.3f}**"
         st.markdown(calculation_str)
-
-    # --- Detailed Analysis Tabs ---
-    st.subheader("Detailed Analysis")
-    
-    most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
-    most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
-    most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
+        st.subheader("Detailed Analysis")
+        most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
+        most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
+        most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
     
     tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
     
     with tab1:
-        st.markdown("These are the games where the critic's score differed most from the group average.")
         st.dataframe(
             most_contrarian_ratings.rename(columns={'score': 'critic_score', 'normalized_score_deviation': 'deviation'})[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
             column_config={
@@ -120,7 +119,6 @@ if selected_critic_name:
         )
 
     with tab2:
-        st.markdown("These are the games where the critic's decision to play or not play went against the grain the most.")
         st.dataframe(
             most_contrarian_plays.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'participation_rate_percent']],
             column_config={
@@ -131,7 +129,6 @@ if selected_critic_name:
         )
 
     with tab3:
-        st.markdown("This is the critic's complete rating history for all games.")
         st.dataframe(
             critic_ratings.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'avg_game_score']],
             column_config={
