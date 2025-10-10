@@ -22,33 +22,45 @@ if selected_critic_name:
     selected_critic_id = critic_map[selected_critic_name]
 
     # --- Full Controversy Calculation in Python/Pandas ---
+    
+    # 1. Fetch Base Data
     all_games_df = pd.read_sql(sa.select(Game.id.label("game_id"), Game.game_name).where(Game.upcoming == False), session.bind)
     all_ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), session.bind)
     
+    # 2. Calculate Game Stats
     game_stats = all_ratings_df.groupby('game_id')['score'].agg(['mean', 'count']).rename(columns={'mean': 'avg_game_score', 'count': 'rating_count'})
     game_stats['participation_rate'] = game_stats['rating_count'] / len(critics_df)
     game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left').fillna({'avg_game_score': 0, 'participation_rate': 0})
     
+    # 3. Calculate Critic Stats (n)
     critic_stats = all_ratings_df.groupby('critic_id').size().reset_index(name='n')
-    
+
+    # 4. Build a "Scaffold" of every critic-game pair
     scaffold = critics_df.merge(all_games_df, how='cross')
     scaffold = pd.merge(scaffold, game_stats.drop(columns=['game_name']), on='game_id', how='left')
     scaffold = pd.merge(scaffold, critic_stats, left_on='id', right_on='critic_id', how='left')
     scaffold = pd.merge(scaffold, all_ratings_df, on=['critic_id', 'game_id'], how='left')
     scaffold['n'] = scaffold['n'].fillna(0).astype(int)
+
+    # 5. Calculate Deviations
+    scaffold['normalized_score_deviation'] = (scaffold['score'] - scaffold['avg_game_score']).abs() / 10.0
     
     def calculate_play_deviation(row):
-        if row['n'] < 10: return 0
+        if row['n'] < 10:
+            return 0
         is_rated = pd.notna(row['score'])
-        if is_rated and row['participation_rate'] <= 0.5: return 1.0 - row['participation_rate']
-        elif not is_rated and row['participation_rate'] > 0.5: return row['participation_rate']
+        if is_rated and row['participation_rate'] <= 0.5:
+            return 1.0 - row['participation_rate']
+        elif not is_rated and row['participation_rate'] > 0.5:
+            return row['participation_rate']
         return 0
     scaffold['play_deviation'] = scaffold.apply(calculate_play_deviation, axis=1)
-    
-    scaffold['normalized_score_deviation'] = (scaffold['score'] - scaffold['avg_game_score']).abs() / 10.0
+
+    # 7. Calculate Observed Score for each critic
     scaffold['total_deviation'] = (0.5 * scaffold['normalized_score_deviation'].fillna(0)) + (0.5 * scaffold['play_deviation'])
     observed_controversy_df = scaffold.groupby(['critic_name', 'n'])['total_deviation'].mean().reset_index().rename(columns={'total_deviation': 'observed_score'})
-    
+
+    # 8. Apply Bayesian Shrinkage
     prior_score = observed_controversy_df['observed_score'].mean()
     C = 15
     observed_controversy_df['credibility_weight'] = observed_controversy_df['n'] / (observed_controversy_df['n'] + C)
@@ -61,7 +73,6 @@ if selected_critic_name:
     total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == selected_critic_id).scalar()
     
     # --- Scorecard ---
-    # FIX: Use the more direct calculation for participation rate
     participation_rate = (len(critic_ratings) / len(details_df)) * 100 if len(details_df) > 0 else 0
     avg_score = critic_ratings['score'].mean() if not critic_ratings.empty else 0
 
@@ -73,8 +84,7 @@ if selected_critic_name:
         col3.metric("Final Controversy Score", f"{critic_breakdown['final_controversy_score']:.3f}")
         col4.metric("Games Nominated", f"{total_nominations}")
 
-
-    # (Expander and Tabs code remains the same)
+    # --- Controversy Score Breakdown Expander ---
     with st.expander("**Controversy Score Breakdown**"):
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
         col1, col2, col3, col4 = st.columns(4)
@@ -88,38 +98,52 @@ if selected_critic_name:
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calculation_str = f"= ({critic_breakdown['credibility_weight']:.2f} * {critic_breakdown['observed_score']:.3f}) + ({1-critic_breakdown['credibility_weight']:.2f} * {prior_score:.3f}) = **{critic_breakdown['final_controversy_score']:.3f}**"
         st.markdown(calculation_str)
-        st.subheader("Detailed Analysis")
-        most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
-        most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
-        most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
+
+    # --- Detailed Analysis Tabs ---
+    st.subheader("Detailed Analysis")
+    
+    most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
+    most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
+    most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
     
     tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
     
     with tab1:
+        st.markdown("These are the games where the critic's score differed most from the group average.")
         st.dataframe(
             most_contrarian_ratings.rename(columns={'score': 'critic_score', 'normalized_score_deviation': 'deviation'})[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
             column_config={
-                "game_name": "Game", "critic_score": "Their Score",
-                "avg_game_score": "Group Average", "deviation": st.column_config.NumberColumn("Score Deviation (0-1)", format="%.3f")
+                "game_name": "Game",
+                "critic_score": "Their Score",
+                "avg_game_score": "Group Average",
+                "deviation": st.column_config.NumberColumn("Score Deviation (0-1)", format="%.3f")
             },
-            hide_index=True, width='stretch'
+            hide_index=True,
+            width='stretch'
         )
 
     with tab2:
+        st.markdown("These are the games where the critic's decision to play or not play went against the grain the most.")
         st.dataframe(
             most_contrarian_plays.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'participation_rate_percent']],
             column_config={
-                "game_name": "Game", "critic_score": "Their Score (if played)",
+                "game_name": "Game",
+                "critic_score": "Their Score (if played)",
                 "participation_rate_percent": st.column_config.ProgressColumn("Group Participation Rate", format="%d%%", min_value=0, max_value=100)
             },
-            hide_index=True, width='stretch'
+            hide_index=True,
+            width='stretch'
         )
 
     with tab3:
+        st.markdown("This is the critic's complete rating history for all games.")
         st.dataframe(
             critic_ratings.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'avg_game_score']],
             column_config={
-                "game_name": "Game", "critic_score": "Their Score", "avg_game_score": "Group Average"
+                "game_name": "Game",
+                "critic_score": "Their Score",
+                "avg_game_score": "Group Average"
             },
-            hide_index=True, width='stretch'
+            hide_index=True,
+            width='stretch'
         )
