@@ -100,6 +100,7 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calc_str = f"= ({weight:.2f} × {critic_breakdown['observed_score']:.3f}) + ({1-weight:.2f} × {critic_breakdown['prior_score']:.3f}) = **{final_score:.3f}**"
         st.markdown(calc_str)
+        st.markdown("Note: the above is to a lower precision than the actual calculation, and is only representative, so the actual number may vary slightly.")
 
 def display_analysis_tabs(critic_ratings, details_df):
     """Renders the three tabs with detailed breakdown tables."""
