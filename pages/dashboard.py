@@ -24,15 +24,21 @@ color_map = {name: colors[i % len(colors)] for i, name in enumerate(critic_names
 
 # --- Key Performance Indicators ---
 with st.container(border=True):
-    total_ratings = session.query(sa.func.count(Rating.id)).scalar()
+    total_ratings_val = session.query(sa.func.count(Rating.id)).scalar()
     avg_score = session.query(sa.func.avg(Rating.score)).scalar()
     
-    total_critics = session.query(sa.func.count(Critic.id)).scalar()
-    total_games = session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar()
-    participation_rate = (total_ratings / (total_critics * total_games)) * 100 if (total_critics * total_games) > 0 else 0
+    # --- Corrected Participation Rate Calculation ---
+    total_critics_subq = session.query(sa.func.count(Critic.id)).scalar_subquery()
+    total_games_subq = session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar_subquery()
+    total_ratings_subq = session.query(sa.func.count(Rating.score)).scalar_subquery()
+
+    stmt = sa.select(
+        (total_ratings_subq.cast(sa.Float) / (total_critics_subq * total_games_subq)) * 100
+    )
+    participation_rate = session.execute(stmt).scalar() or 0
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Ratings Given", f"{total_ratings}")
+    col1.metric("Total Ratings Given", f"{total_ratings_val}")
     col2.metric("Overall Average Score", f"{avg_score:.2f}" if avg_score else "N/A")
     col3.metric("Group Participation", f"{participation_rate:.1f}%")
 
@@ -66,7 +72,7 @@ rankings_stmt = (
             (game_stats_subq.c.n + global_stats_subq.c.C)
         ).label("final_adjusted_score")
     )
-    .select_from(game_stats_subq, global_stats_subq) # Corrected line
+    .select_from(game_stats_subq, global_stats_subq)
 )
 
 rankings_df = pd.read_sql(rankings_stmt, session.bind)
@@ -85,11 +91,11 @@ with st.container(border=True):
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("##### Final Ranking")
-        st.markdown(f"**#1**: {best_adjusted['game_name']}")
+        st.markdown(f"**First**: {best_adjusted['game_name']}")
         st.markdown(f"**Last**: {worst_adjusted['game_name']} (#{worst_adjusted['Rank']})")
     with col2:
         st.markdown("##### Unadjusted Ranking")
-        st.markdown(f"**#1**: {best_unadjusted['game_name']}")
+        st.markdown(f"**First**: {best_unadjusted['game_name']}")
         st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
 
 
@@ -156,6 +162,8 @@ with tab2:
             st.bar_chart(binned_pivot, height=310, color=bar_chart_colors)
 
     st.subheader("Critics by Participation")
+    # We need total_games for this calculation, so we fetch it again if needed
+    total_games_val = session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar()
     participation_stmt = (
         sa.select(
             Critic.critic_name,
@@ -167,7 +175,7 @@ with tab2:
         .order_by(sa.desc("ratings_given"))
     )
     critic_participation_df = pd.read_sql(participation_stmt, session.bind)
-    critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / total_games) * 100 if total_games > 0 else 0
+    critic_participation_df['participation_rate'] = (critic_participation_df['ratings_given'] / total_games_val) * 100 if total_games_val > 0 else 0
     st.dataframe(
         critic_participation_df,
         column_config={
