@@ -24,10 +24,13 @@ def load_data(_conn):
     # Calculate global stats from the returned data
     global_avg_score = ratings_df['score'].mean()
     global_std_dev = ratings_df['score'].std()
+    rankings_df, critics_with_stats_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
     global_adjusted_avg = rankings_df['final_adjusted_score'].mean()
+    # NEW: Calculate the standard deviation of the adjusted scores
+    global_adjusted_std = rankings_df['final_adjusted_score'].std()
     
-    # Return all the necessary DataFrames
-    return games_df, critics_with_stats_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg
+    # Return all the necessary DataFrames and values
+    return games_df, critics_with_stats_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg, global_adjusted_std
 
 # --- Authentication & Page Setup ---
 if not st.session_state.get("password_correct", False):
@@ -67,30 +70,57 @@ if selected_game_name:
         col1, col2 = st.columns([3, 1])
         with col1:
             g_col1, g_col2 = st.columns(2)
+            # --- Raw Score Gauge and Rank ---
             with g_col1:
                 raw_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number+delta", value=game_info['average_score'],
-                    delta={'reference': global_avg_score, 'position': "bottom"},
+                    mode="gauge+number", value=game_info['average_score'],
                     title={'text': "Raw Average Score"},
                     gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
                            'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
                 ))
                 raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(raw_gauge, use_container_width=True)
+
+                st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
+
+                # Custom three-state delta display
+                raw_delta = game_info['average_score'] - global_avg_score
+                raw_threshold = 0.5 * global_std_dev
+                if raw_delta > raw_threshold:
+                    st.markdown(f"<p style='text-align: center; color: #27ae60;'>▲ {raw_delta:+.2f} (Higher than Average)</p>", unsafe_allow_html=True)
+                elif raw_delta < -raw_threshold:
+                    st.markdown(f"<p style='text-align: center; color: #c0392b;'>▼ {raw_delta:+.2f} (Lower than Average)</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<p style='text-align: center; color: #7f8c8d;'>~ {raw_delta:+.2f} (About Average)</p>", unsafe_allow_html=True)
+
+            # --- Adjusted Score Gauge and Rank ---
             with g_col2:
                 adj_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number+delta", value=game_info['final_adjusted_score'],
-                    delta={'reference': global_adjusted_avg, 'position': "bottom"},
+                    mode="gauge+number", value=game_info['final_adjusted_score'],
                     title={'text': "Final Adjusted Score"},
                     gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
                            'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
                 ))
                 adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(adj_gauge, use_container_width=True)
+
+                st.metric("Adjusted Rank", f"#{game_info['Rank']}")
+
+                # Custom three-state delta display
+                adj_delta = game_info['final_adjusted_score'] - global_adjusted_avg
+                adj_threshold = 0.5 * global_adjusted_std
+                if adj_delta > adj_threshold:
+                    st.markdown(f"<p style='text-align: center; color: #27ae60;'>▲ {adj_delta:+.2f} (Higher than Average)</p>", unsafe_allow_html=True)
+                elif adj_delta < -adj_threshold:
+                    st.markdown(f"<p style='text-align: center; color: #c0392b;'>▼ {adj_delta:+.2f} (Lower than Average)</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<p style='text-align: center; color: #7f8c8d;'>~ {adj_delta:+.2f} (About Average)</p>", unsafe_allow_html=True)
+
+        # --- Right-hand metrics ---
         with col2:
-            st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
-            st.metric("Adjusted Rank", f"#{game_info['Rank']}")
             st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
+            play_rate = (game_info['number_of_ratings'] / len(critics_df)) * 100
+            st.metric("Play Rate", f"{play_rate:.1f}%")
             st.metric("Controversy (Std Dev)", f"{game_ratings_df['score'].std():.3f}" if game_info['number_of_ratings'] > 1 else "N/A")
 
     # --- Adjusted Score Breakdown ---
