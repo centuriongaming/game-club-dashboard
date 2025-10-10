@@ -16,21 +16,20 @@ session = get_sqla_session()
 
 # --- Cached Data Function ---
 @st.cache_data
-# --- Cached Data Function (CORRECTED VERSION) ---
 @st.cache_data
 def load_dashboard_data(_session):
     """
     Runs all expensive queries and calculations for the dashboard at once.
     """
-    # --- Base Data ---
+    # --- Correctly load each DataFrame directly from the database ---
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
     games_df = pd.read_sql(sa.select(Game.id, Game.game_name).where(Game.upcoming == False), _session.bind)
-    ratings_df = pd.read_sql(sa.select(Rating.id, Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
+    ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
     
-    # --- Call the new utility function for game rankings ---
+    # --- Call the utility function with the correct data ---
     rankings_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
 
-    # --- (The rest of the function for KPIs, other charts, etc., remains the same) ---
+    # --- The rest of the function for KPIs, other charts, etc., remains the same ---
     critic_names = critics_df['critic_name'].tolist()
     total_ratings_val = len(ratings_df)
     avg_score = ratings_df['score'].mean() if not ratings_df.empty else 0
@@ -56,6 +55,7 @@ def load_dashboard_data(_session):
     upcoming_games_df = pd.read_sql(upcoming_stmt, _session.bind)
 
     return kpis, rankings_df, nomination_df, binned_df, critic_participation_df, upcoming_games_df, critic_names
+
 
 
 # --- Page Content ---
