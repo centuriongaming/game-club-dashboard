@@ -71,7 +71,7 @@ if selected_game_name:
             with g_col1:
                 raw_gauge = go.Figure(go.Indicator(
                     mode="gauge+number+delta",
-                    value=game_info['critic_avg'],
+                    value=game_info['average_score'],
                     delta={'reference': global_avg_score, 'position': "bottom"},
                     title={'text': "Raw Average Score"},
                     gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
@@ -112,7 +112,7 @@ if selected_game_name:
         st.markdown("The final score is a weighted average that is 'shrunk' towards a baseline, penalizing games for not being widely played.")
         c1, c2, c3, c4 = st.columns(4)
         
-        c1.metric("1. Raw Average", f"{game_info['critic_avg']:.3f}", help="The simple average of all scores this game received.")
+        c1.metric("1. Raw Average", f"{game_info['average_score']:.3f}", help="The simple average of all scores this game received.")
         c2.metric("2. Ratings (n)", f"{game_info['number_of_ratings']}", help="The number of critics who rated this game. This determines the weight of the Raw Average.")
         c3.metric("3. Pessimistic Prior", f"{game_info['pessimistic_prior']:.3f}", help="The baseline this score is pulled towards. It's the average 'pessimistic score' (avg - std dev) of all critics who skipped this game.")
         c4.metric("4. Skippers (C)", f"{game_info['number_of_skippers']}", help="The number of critics who did not rate this game. This determines the weight of the Pessimistic Prior.")
@@ -120,7 +120,7 @@ if selected_game_name:
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = \frac{(n \times \text{Raw Avg}) + (C \times \text{Pessimistic Prior})}{(n + C)} $$')
-        calc_str = f"= (({game_info['number_of_ratings']} × {game_info['critic_avg']:.3f}) + ({game_info['number_of_skippers']} × {game_info['pessimistic_prior']:.3f})) / ({game_info['number_of_ratings']} + {game_info['number_of_skippers']}) = **{game_info['final_adjusted_score']:.3f}**"
+        calc_str = f"= (({game_info['number_of_ratings']} × {game_info['average_score']:.3f}) + ({game_info['number_of_skippers']} × {game_info['pessimistic_prior']:.3f})) / ({game_info['number_of_ratings']} + {game_info['number_of_skippers']}) = **{game_info['final_adjusted_score']:.3f}**"
         st.markdown(calc_str)
     
     # --- Detailed Tabs ---
@@ -151,11 +151,11 @@ if selected_game_name:
         tcol2.error(f"**Lowest Score:** {lowest_rating['score']:.1f} by {lowest_critic}")
         
     with tab2:
-        # NOTE: This merge adds the critic stats (like critic_avg) to the ratings for this game.
+        # NOTE: This merge adds the critic stats (like average_score) to the ratings for this game.
         detailed_scores_df = pd.merge(game_ratings_df, critics_df, left_on='critic_id', right_on='id')
         
-        # FIX 3: Replaced 'critic_avg' with 'critic_avg'. Adjust if your column name is different.
-        detailed_scores_df['delta'] = detailed_scores_df['score'] - detailed_scores_df['critic_avg']
+        # FIX 3: Replaced 'critic_avg' with 'average_score'. Adjust if your column name is different.
+        detailed_scores_df['delta'] = detailed_scores_df['score'] - detailed_scores_df['average_score']
         
         threshold = 0.5 * global_std_dev
         def format_delta_with_symbol(delta):
@@ -175,13 +175,13 @@ if selected_game_name:
             column_config={
                 "critic_name": "Critic",
                 "score": st.column_config.ProgressColumn("Their Score", format="%.1f", min_value=0, max_value=10),
-                # FIX 3: Changed key from 'critic_avg' to 'critic_avg'.
-                "critic_avg": st.column_config.NumberColumn("Critic's Avg.", help="This critic's average score across all games.", format="%.2f"),
+                # FIX 3: Changed key from 'critic_avg' to 'average_score'.
+                "average_score": st.column_config.NumberColumn("Critic's Avg.", help="This critic's average score across all games.", format="%.2f"),
                 "vs. Their Avg.": "vs. Their Avg."
             },
             hide_index=True, use_container_width=True,
             # FIX 3: Changed column name in order list.
-            column_order=['critic_name', 'score', 'critic_avg', 'vs. Their Avg.']
+            column_order=['critic_name', 'score', 'average_score', 'vs. Their Avg.']
         )
         
         st.markdown(f"""<small><b>Legend:</b><br>
