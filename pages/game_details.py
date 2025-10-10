@@ -12,21 +12,21 @@ def load_data(_conn):
     """
     Loads all necessary data at once and caches it.
     """
+    # Load base tables
     games_df = _conn.query("SELECT id, game_name FROM games WHERE upcoming IS FALSE ORDER BY game_name;")
     critics_df = _conn.query("SELECT id, critic_name FROM critics ORDER BY critic_name;")
     full_ratings_scaffold_df = _conn.query("SELECT critic_id, game_id, score FROM ratings;")
     ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
     
-    # Pre-calculate each critic's stats
-    critic_stats = ratings_df.groupby('critic_id')['score'].agg(['mean', 'std']).rename(columns={'mean': 'critic_avg', 'std': 'critic_std'}).fillna(0)
-    critics_with_stats_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id', how='left')
+    # Call the utility function to get BOTH rankings and critic stats
+    rankings_df, critics_with_stats_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
     
-    # Calculate global stats and the full rankings
+    # Calculate global stats from the returned data
     global_avg_score = ratings_df['score'].mean()
     global_std_dev = ratings_df['score'].std()
-    rankings_df = calculate_custom_game_rankings(games_df, critics_with_stats_df, ratings_df)
     global_adjusted_avg = rankings_df['final_adjusted_score'].mean()
     
+    # Return all the necessary DataFrames
     return games_df, critics_with_stats_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg
 
 # --- Authentication & Page Setup ---
@@ -144,7 +144,6 @@ if selected_game_name:
         
     with tab2:
         detailed_scores_df = pd.merge(game_ratings_df, critics_df, left_on='critic_id', right_on='id')
-        # FIX: Use the correct column name 'critic_avg' instead of 'critic_avg_score'
         detailed_scores_df['delta'] = detailed_scores_df['score'] - detailed_scores_df['critic_avg']
         
         threshold = 0.5 * global_std_dev

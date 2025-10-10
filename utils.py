@@ -99,51 +99,39 @@ def calculate_controversy_scores(_session):
 
 def calculate_custom_game_rankings(games_df, critics_df, ratings_df):
     """
-    Calculates game rankings using a personalized Bayesian average.
-
-    The ranking is adjusted based on the number of critics who skipped a game
-    and the average "pessimistic score" of those skippers.
-
-    Args:
-        games_df (pd.DataFrame): DataFrame with game info (id, game_name).
-        critics_df (pd.DataFrame): DataFrame with critic info (id, critic_name).
-        ratings_df (pd.DataFrame): DataFrame with all ratings (critic_id, game_id, score).
-
+    Calculates game rankings AND detailed critic stats.
+    
     Returns:
-        pd.DataFrame: A ranked DataFrame with the final adjusted scores.
+        tuple: A tuple containing:
+            - pd.DataFrame: The final ranked DataFrame.
+            - pd.DataFrame: The critics DataFrame with personal avg and std dev.
     """
     # 1. Pre-calculate personal stats for every critic
     critic_stats = ratings_df.groupby('critic_id')['score'].agg(['mean', 'std']).rename(columns={'mean': 'critic_avg', 'std': 'critic_std'})
-    critic_stats['critic_std'] = critic_stats['critic_std'].fillna(0) # Std dev is NaN for critics with <=1 rating
+    critic_stats['critic_std'] = critic_stats['critic_std'].fillna(0)
     critics_with_stats_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id', how='left')
-    global_avg_fallback = ratings_df['score'].mean() # Fallback for edge cases
+    global_avg_fallback = ratings_df['score'].mean()
 
     # 2. Define the calculation to be applied to each game
     def calculate_game_rank(game_group):
-        # Basic game stats
         n = len(game_group)
         game_avg = game_group['score'].mean()
         
-        # Identify skippers and get their stats
         raters_ids = set(game_group['critic_id'])
         all_critic_ids = set(critics_with_stats_df['id'])
         skipper_ids = all_critic_ids - raters_ids
         n_skipped = len(skipper_ids)
         
-        # Calculate the pessimistic prior for this specific game
         if n_skipped > 0:
             skipper_stats = critics_with_stats_df[critics_with_stats_df['id'].isin(skipper_ids)]
-            # Calculate pessimistic score, handling critics with no ratings (NaN avg/std)
             skipper_stats['pessimistic_score'] = skipper_stats['critic_avg'] - skipper_stats['critic_std']
             pessimistic_prior = skipper_stats['pessimistic_score'].mean()
         else:
             pessimistic_prior = global_avg_fallback
         
-        # If the prior is still NaN (e.g., all skippers had no ratings), use global average
         if pd.isna(pessimistic_prior):
             pessimistic_prior = global_avg_fallback
 
-        # 3. Apply the custom formula
         numerator = (n * game_avg) + (n_skipped * pessimistic_prior)
         denominator = n + n_skipped
         adjusted_score = numerator / denominator if denominator > 0 else 0
@@ -154,13 +142,14 @@ def calculate_custom_game_rankings(games_df, critics_df, ratings_df):
             'final_adjusted_score': adjusted_score
         })
 
-    # Run the calculation for every game and merge with game names
+    # Run the calculation for every game
     rankings_df = ratings_df.groupby('game_id').apply(calculate_game_rank)
     rankings_df = pd.merge(games_df, rankings_df, left_on='id', right_on='game_id')
     
-    # 4. Sort and add final rank columns
+    # 3. Sort and add final rank columns
     rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
     rankings_df['Rank'] = rankings_df.index + 1
     rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
 
-    return rankings_df
+    # 4. Return BOTH the rankings and the critic stats
+    return rankings_df, critics_with_stats_df
