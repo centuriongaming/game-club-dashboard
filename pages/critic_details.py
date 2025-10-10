@@ -27,8 +27,8 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         threshold = critic_breakdown['credibility_threshold']
         weight = games_rated_count / (games_rated_count + threshold) if (games_rated_count + threshold) > 0 else 0
         
-        # This is the true, high-precision final score
-        final_score = (weight * critic_breakdown['observed_score']) + ((1 - weight) * critic_breakdown['prior_score'])
+        # Use the final score directly from the pre-calculated data.
+        final_score = critic_breakdown['final_controversy_score']
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("1. Observed Score", f"{critic_breakdown['observed_score']:.3f}", help="A raw measure of this critic's tendency to deviate from the group, based on both their rating scores and participation habits.")

@@ -148,7 +148,6 @@ def calculate_custom_game_rankings(games_df, critics_df, ratings_df):
             'final_adjusted_score': adjusted_score
         })
 
-    # ... (the rest of the function is the same)
     rankings_df = ratings_df.groupby('game_id').apply(calculate_game_rank)
     rankings_df = pd.merge(games_df, rankings_df, left_on='id', right_on='game_id')
     
