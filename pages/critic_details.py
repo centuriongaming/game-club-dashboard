@@ -53,16 +53,16 @@ if selected_critic_name:
     # --- Calculations & Scorecard ---
     critic_ratings = details_df.dropna(subset=['critic_score'])
     
-    # Correctly calculate n, the number of rated games for the selected critic
+    # FIX 4: Correctly calculate n (number of rated games) for the selected critic
     n = len(critic_ratings)
 
     # Get the critic's specific observed score
-    critic_observed = observed_controversy_df[observed_controversy_df['critic_name'] == selected_critic_name].iloc[0]
+    critic_observed = observed_controversy_df.loc[observed_controversy_df['critic_name'] == selected_critic_name].iloc[0]
     observed_score = critic_observed['observed_score']
     
-    # Calculate global prior score and perform the final Bayesian calculation in Python
+    # Perform the final Bayesian calculation in Python for accuracy
     prior_score = observed_controversy_df['observed_score'].mean()
-    C = 5 # Credibility constant
+    C = 15 # Credibility constant from your queries.json
     credibility_weight = n / (n + C) if (n + C) > 0 else 0
     final_controversy_score = (credibility_weight * observed_score) + ((1 - credibility_weight) * prior_score)
     
@@ -88,6 +88,7 @@ if selected_critic_name:
         
         st.markdown("---")
         st.markdown("##### Final Calculation")
+        # FIX 1: Use markdown for reliable rendering
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calculation_str = f"= ({credibility_weight:.2f} * {observed_score:.3f}) + ({1-credibility_weight:.2f} * {prior_score:.3f}) = **{final_controversy_score:.3f}**"
         st.markdown(calculation_str)
@@ -98,39 +99,4 @@ if selected_critic_name:
     critic_ratings['deviation'] = (critic_ratings['critic_score'] - critic_ratings['avg_game_score']).abs()
     most_contrarian_ratings = critic_ratings.sort_values('deviation', ascending=False).head(10)
     details_df['play_decision_diff'] = (details_df['critic_score'].notna().astype(int) - details_df['participation_rate']).abs()
-    most_contrarian_plays = details_df.sort_values('play_decision_diff', ascending=False).head(10)
-    
-    # Create the percentage column for display
-    most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
-
-    tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
-
-    with tab1:
-        st.markdown("These are the games where the critic's score differed most from the group average.")
-        st.dataframe(
-            most_contrarian_ratings[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
-            column_config={
-                "game_name": "Game", "critic_score": "Their Score",
-                "avg_game_score": "Group Average", "deviation": st.column_config.NumberColumn("Deviation", format="%.2f")
-            },
-            hide_index=True, use_container_width=True
-        )
-
-    with tab2:
-        st.markdown("These are the games where the critic's decision to play or not play went against the grain the most.")
-        st.dataframe(
-            most_contrarian_plays[['game_name', 'critic_score', 'participation_rate_percent']],
-            column_config={
-                "game_name": "Game", "critic_score": "Their Score (if played)",
-                "participation_rate_percent": st.column_config.ProgressColumn("Group Participation Rate", format="%d%%", min_value=0, max_value=100)
-            },
-            hide_index=True, use_container_width=True
-        )
-
-    with tab3:
-        st.markdown("This is the critic's complete rating history for all games.")
-        st.dataframe(
-            critic_ratings[['game_name', 'critic_score', 'avg_game_score']],
-            column_config={"game_name": "Game", "critic_score": "Their Score", "avg_game_score": "Group Average"},
-            hide_index=True, use_container_width=True
-        )
+    most_contrarian_plays = details_df.sort
