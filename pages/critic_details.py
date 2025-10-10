@@ -34,7 +34,7 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         c1.metric(
             "1. Observed Score", 
             f"{critic_breakdown['observed_score']:.3f}", 
-            help="A 50/50 average of Score Deviation and Play Deviation. For critics with fewer than 10 reviews, Play Deviation is 0, which intentionally pulls this score closer to zero."
+            help="A 25-75 average of how often the user played/didn't play games outside of the norm, and how often the user scored differently. "
         )
         c2.metric("2. Games Rated (n)", f"{games_rated_count:.0f}", help="The number of games rated, used to calculate credibility.")
         c3.metric("3. Group Average", f"{critic_breakdown['prior_score']:.3f}", help="The average controversy score of all critics, used as a baseline.")

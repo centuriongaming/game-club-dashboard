@@ -87,7 +87,7 @@ def calculate_controversy_scores(_session):
     observed_df = pd.merge(observed_df, avg_play_dev, on='critic_id', how='left')
     observed_df = observed_df.fillna({'n': 0, 'avg_score_deviation': 0, 'avg_play_deviation': 0})
     observed_df['n'] = observed_df['n'].astype(int)
-    observed_df['observed_score'] = (0.5 * observed_df['avg_score_deviation']) + (0.5 * observed_df['avg_play_deviation'])
+    observed_df['observed_score'] = (0.75 * observed_df['avg_score_deviation']) + (0.25 * observed_df['avg_play_deviation'])
     
     # 7. Apply Bayesian Shrinkage using the definitive 'n'
     prior_score = observed_df['observed_score'].mean()
