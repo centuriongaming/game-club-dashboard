@@ -119,7 +119,7 @@ def main():
         # Calculate scorecard metrics
         games_rated_count = len(critic_ratings)
         total_games_count = details_df['game_id'].nunique()
-        critic_id = int(critic_breakdown['id'])
+        critic_id = int(critic_breakdown['critic_id'])
         
         metrics = {
             "participation_rate": (games_rated_count / total_games_count) * 100 if total_games_count > 0 else 0,
