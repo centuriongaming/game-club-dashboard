@@ -109,9 +109,12 @@ def display_score_vs_controversy_plot(rankings_df):
             "number_of_ratings": "# of Ratings",
             "average_score": "Raw Avg Score"
         },
-        title="Game Score vs. Controversy Quadrant"
+        title="Game Score vs. Controversy"
     )
-    fig.update_layout(xaxis_title="Final Adjusted Score", yaxis_title="Controversy (Std. Dev.)")
+    fig.update_layout(xaxis_title="Final Adjusted Score",
+                      yaxis_title="Controversy (Std. Dev.)",
+                      yaxis_range=[0, 10] # <-- ADD THIS LINE
+                      )
     st.plotly_chart(fig, use_container_width=True)
     st.caption("Hover over a point to see game details. Bubble size represents the number of ratings.")
 
@@ -133,7 +136,8 @@ def display_overall_score_distribution(ratings_df, avg_score):
         title_text='Group Rating Density (KDE)',
         xaxis_title="Score",
         yaxis_title="Density",
-        showlegend=False
+        showlegend=False,
+        xaxis_range=[0, 10] # <-- ADD THIS LINE TO SET X-AXIS
     )
     st.plotly_chart(fig, use_container_width=True)
 
