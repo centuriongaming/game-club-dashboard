@@ -96,10 +96,14 @@ if selected_critic_name:
     details_df = scaffold_df.loc[scaffold_df['critic_name'] == selected_critic_name]
     critic_ratings = details_df.dropna(subset=['score'])
     
-    # --- Scorecard Metrics ---
-    critic_id = int(critic_breakdown['id']) 
+    # --- Scorecard Metrics (REVISED) ---
+    # Calculate counts directly from filtered dataframes for accuracy.
+    games_rated_count = len(critic_ratings)
+    total_games_count = details_df['game_id'].nunique()
+    
+    critic_id = int(critic_breakdown['id'])
     total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == critic_id).scalar()
-    participation_rate = critic_breakdown['n'] / details_df['game_id'].nunique() * 100
+    participation_rate = (games_rated_count / total_games_count) * 100 if total_games_count > 0 else 0
     avg_score = critic_ratings['score'].mean() if not critic_ratings.empty else 0
 
     st.subheader(f"Scorecard for {selected_critic_name}")
@@ -110,20 +114,39 @@ if selected_critic_name:
         col3.metric("Final Controversy Score", f"{critic_breakdown['final_controversy_score']:.3f}")
         col4.metric("Games Nominated", f"{total_nominations}")
 
-    # --- Controversy Score Breakdown Expander ---
+    # --- Controversy Score Breakdown Expander (REVISED) ---
     with st.expander("**Controversy Score Breakdown**", expanded=True):
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("1. Observed Score", f"{critic_breakdown['observed_score']:.3f}", help="The critic's raw, un-adjusted controversy score.")
-        c2.metric("2. Games Rated (n)", f"{critic_breakdown['n']:.0f}", help="The number of games rated, used to determine credibility.")
-        c3.metric("3. Group Average", f"{critic_breakdown['prior_score']:.3f}", help="The average controversy score for the entire group.")
-        c4.metric("Credibility Weight", f"{critic_breakdown['credibility_weight']:.1%}", help=f"Weight given to the observed score. Calculated as n / (n + C), where C={critic_breakdown['credibility_constant']}.")
+        
+        # New, clearer help text for each metric
+        c1.metric(
+            "1. Observed Score",
+            f"{critic_breakdown['observed_score']:.3f}",
+            help="A raw measure of this critic's tendency to deviate from the group, based on both their rating scores and participation habits. This score is not yet adjusted for credibility."
+        )
+        c2.metric(
+            "2. Games Rated (n)",
+            f"{games_rated_count:.0f}",
+            help="This is the value for 'n': the total number of games a critic has rated. It's used to calculate the Credibility Weight. A higher 'n' means the critic's Observed Score is trusted more."
+        )
+        c3.metric(
+            "3. Group Average",
+            f"{critic_breakdown['prior_score']:.3f}",
+            help="The average controversy score of all critics. This acts as a baseline; critics with fewer ratings will have their final score pulled closer to this number."
+        )
+        c4.metric(
+            "Credibility Weight",
+            f"{critic_breakdown['credibility_weight']:.1%}",
+            help=f"The weight given to the critic's own Observed Score. Calculated as n / (n + C), where C is a constant set to {critic_breakdown['credibility_constant']}. A higher 'n' results in a higher weight."
+        )
         
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
         calc_str = f"= ({critic_breakdown['credibility_weight']:.2f} × {critic_breakdown['observed_score']:.3f}) + ({1-critic_breakdown['credibility_weight']:.2f} × {critic_breakdown['prior_score']:.3f}) = **{critic_breakdown['final_controversy_score']:.3f}**"
         st.markdown(calc_str)
+
 
     # --- Detailed Analysis Tabs ---
     st.subheader("Detailed Analysis")
