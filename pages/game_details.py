@@ -200,6 +200,7 @@ def main():
     try:
         conn = st.connection("mydb", type="sql")
         games_df, critics_with_stats_df, ratings_df, rankings_df, global_stats = load_data(conn)
+        st.write(critics_with_stats_df.columns) # <-- Add this temporary line
     except Exception as e:
         st.error(f"Database connection or data loading failed: {e}")
         st.stop()
