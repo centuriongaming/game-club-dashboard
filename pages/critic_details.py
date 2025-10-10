@@ -61,7 +61,7 @@ def load_page_data(_session):
     
     # 8. Apply Bayesian Shrinkage
     prior_score = observed_df['observed_score'].mean()
-    C = 15
+    C = 30
     observed_df['credibility_weight'] = observed_df['n'] / (observed_df['n'] + C)
     observed_df['final_controversy_score'] = (observed_df['credibility_weight'] * observed_df['observed_score']) + ((1 - observed_df['credibility_weight']) * prior_score)
     observed_df['prior_score'] = prior_score
