@@ -96,4 +96,46 @@ if selected_critic_name:
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
-        calculation_str = f"= ({critic_breakdown['credibility_weight']
+        calculation_str = f"= ({critic_breakdown['credibility_weight']:.2f} * {critic_breakdown['observed_score']:.3f}) + ({1-critic_breakdown['credibility_weight']:.2f} * {prior_score:.3f}) = **{critic_breakdown['final_controversy_score']:.3f}**"
+        st.markdown(calculation_str)
+
+    # --- Detailed Analysis Tabs ---
+    st.subheader("Detailed Analysis")
+    
+    most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
+    most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
+    most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
+    
+    tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
+    
+    with tab1:
+        st.markdown("These are the games where the critic's score differed most from the group average.")
+        st.dataframe(
+            most_contrarian_ratings.rename(columns={'score': 'critic_score', 'normalized_score_deviation': 'deviation'})[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score",
+                "avg_game_score": "Group Average", "deviation": st.column_config.NumberColumn("Score Deviation (0-1)", format="%.3f")
+            },
+            hide_index=True, width='stretch'
+        )
+
+    with tab2:
+        st.markdown("These are the games where the critic's decision to play or not play went against the grain the most.")
+        st.dataframe(
+            most_contrarian_plays.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'participation_rate_percent']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score (if played)",
+                "participation_rate_percent": st.column_config.ProgressColumn("Group Participation Rate", format="%d%%", min_value=0, max_value=100)
+            },
+            hide_index=True, width='stretch'
+        )
+
+    with tab3:
+        st.markdown("This is the critic's complete rating history for all games.")
+        st.dataframe(
+            critic_ratings.rename(columns={'score': 'critic_score'})[['game_name', 'critic_score', 'avg_game_score']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score", "avg_game_score": "Group Average"
+            },
+            hide_index=True, width='stretch'
+        )
