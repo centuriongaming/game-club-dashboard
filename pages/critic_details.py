@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import sqlalchemy as sa
-from utils import check_auth, get_sqla_session
+from utils import check_auth, get_sqla_session, calculate_controversy_scores
 from database_models import Critic, Game, Rating
 
 # --- Page & Data Configuration ---
@@ -149,7 +149,8 @@ def main():
     
     st.title("Critic Details")
 
-    controversy_df, scaffold_df = load_page_data(session)
+    # Call the unified function from utils.py
+    controversy_df, scaffold_df = calculate_controversy_scores(session)
 
     if controversy_df.empty:
         st.warning("No rating data available to generate analysis.")
@@ -183,3 +184,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+

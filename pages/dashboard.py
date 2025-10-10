@@ -86,19 +86,17 @@ def display_controversy_table(session):
     """Display the ranked table of critic controversy scores."""
     st.subheader("Critic Controversy Ranking")
     st.caption("A statistically-adjusted score representing how a critic's rating and participation deviates from the group consensus.")
-    critic_controversy_df = calculate_controversy_scores(session)
+    
+    # Call the unified function, but we only need the scores part here.
+    critic_controversy_df, _ = calculate_controversy_scores(session)
+    
     if critic_controversy_df.empty:
         st.info("Not enough data to calculate controversy scores.")
         return
         
-    # --- THIS SECTION IS THE FIX ---
-    # 1. Sort the DataFrame by score in descending order first.
+    # Sort the DataFrame by score in descending order first.
     sorted_df = critic_controversy_df.sort_values('final_controversy_score', ascending=False)
-    
-    # 2. Reset the index to reflect the new sorted order.
     sorted_df = sorted_df.reset_index(drop=True)
-    
-    # 3. Now, create the 'Rank' column based on the correct order.
     sorted_df['Rank'] = sorted_df.index + 1
     
     st.dataframe(
@@ -109,7 +107,9 @@ def display_controversy_table(session):
             "final_controversy_score": st.column_config.NumberColumn("Final Controversy Score", format="%.3f")
         },
         hide_index=True, use_container_width=True
-    )# --- Main Page ---
+    )
+
+# --- Main Page ---
 def main():
     """Renders the main dashboard page."""
     check_auth()
