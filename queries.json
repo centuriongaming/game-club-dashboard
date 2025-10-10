@@ -1,47 +1,4 @@
 {
-  "get_critics_list": [
-    "SELECT critic_name FROM critics ORDER BY critic_name ASC;"
-  ],
-  "get_kpi_total_ratings": [
-    "SELECT COUNT(score) AS total FROM ratings;"
-  ],
-  "get_kpi_avg_score": [
-    "SELECT AVG(score) AS average FROM ratings WHERE score IS NOT NULL;"
-  ],
-  "get_kpi_participation": [
-    "SELECT (COUNT(r.score)::FLOAT / (SELECT COUNT(*) FROM critics) / (SELECT COUNT(*) FROM games WHERE upcoming IS FALSE)) * 100 AS rate",
-    "FROM ratings r;"
-  ],
-  "get_game_rankings": [
-    "WITH game_stats AS (",
-    "  SELECT g.game_name, COUNT(r.score) as n, AVG(r.score) as x_bar,",
-    "  (SELECT COUNT(*) FROM critics) AS total_critics",
-    "  FROM games g LEFT JOIN ratings r ON g.id = r.game_id",
-    "  WHERE g.upcoming IS FALSE AND r.score IS NOT NULL",
-    "  GROUP BY g.game_name",
-    "), global_stats AS (",
-    "  SELECT 2 AS C, (SELECT AVG(score) FROM ratings WHERE score IS NOT NULL) as m",
-    ")",
-    "SELECT gs.game_name, gs.x_bar as average_score, gs.n as number_of_ratings,",
-    "((gs.n * gs.x_bar) + (glob.C * glob.m)) / (gs.n + glob.C) AS final_adjusted_score",
-    "FROM game_stats gs, global_stats glob;"
-  ],
-  "get_critic_participation": [
-    "SELECT c.critic_name, COUNT(r.score) AS ratings_given,",
-    "(SELECT COUNT(*) FROM games WHERE upcoming IS FALSE) AS total_games, AVG(r.score) AS average_score",
-    "FROM critics c LEFT JOIN ratings r ON c.id = r.critic_id",
-    "GROUP BY c.critic_name ORDER BY ratings_given DESC;"
-  ],
-  "get_critic_nominations": [
-    "SELECT c.critic_name, COUNT(g.id) AS nomination_count",
-    "FROM critics c LEFT JOIN games g ON g.nominated_by = c.id",
-    "GROUP BY c.critic_name;"
-  ],
-  "get_critic_score_distribution": [
-    "SELECT c.critic_name, FLOOR(r.score) as score_bin, COUNT(r.id) as rating_count",
-    "FROM ratings r JOIN critics c ON r.critic_id = c.id",
-    "WHERE r.score IS NOT NULL GROUP BY c.critic_name, score_bin;"
-  ],
   "get_critic_controversy": [
     "WITH Config AS (SELECT 0.5 AS score_weight, 0.5 AS play_weight, 10.0 AS max_score),",
     "GameStats AS (",
@@ -72,24 +29,5 @@
     "FROM DeviationScores d",
     "GROUP BY d.critic_name",
     "ORDER BY controversy_score DESC"
-  ],
-  "get_upcoming_games": [
-    "SELECT g.game_name, c.critic_name AS nominated_by",
-    "FROM games g LEFT JOIN critics c ON g.nominated_by = c.id",
-    "WHERE g.upcoming IS TRUE ORDER BY g.game_name ASC;"
-  ],
-  "get_critic_nominations_count": [
-    "SELECT COUNT(*) as count FROM games WHERE nominated_by = %(critic_id)s;"
-  ],
-  "get_critic_details": [
-    "WITH GameStats AS (",
-    "  SELECT g.id AS game_id, g.game_name, AVG(r.score) AS avg_game_score,",
-    "  COUNT(r.critic_id)::FLOAT / (SELECT COUNT(*) FROM critics) AS participation_rate",
-    "  FROM games g LEFT JOIN ratings r ON g.id = r.game_id",
-    "  WHERE g.upcoming IS FALSE GROUP BY g.id, g.game_name",
-    ")",
-    "SELECT gs.game_name, gs.avg_game_score, gs.participation_rate, r.score AS critic_score",
-    "FROM GameStats gs",
-    "LEFT JOIN ratings r ON gs.game_id = r.game_id AND r.critic_id = %(critic_id)s;"
   ]
 }
