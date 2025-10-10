@@ -68,23 +68,42 @@ def display_scorecard(game_info, game_ratings_df, num_total_critics, global_stat
                     create_gauge_figure(game_info['average_score'], global_stats['avg_score'], "Raw Average Score"),
                     use_container_width=True
                 )
-                st.metric("Unadjusted Rank", f"#{int(game_info['Unadjusted Rank'])}")
+                st.metric(
+                    "Unadjusted Rank", 
+                    f"#{int(game_info['Unadjusted Rank'])}",
+                    help="The game's rank based purely on its raw average score, without any statistical adjustments for the number of ratings."
+                )
             with g_col2:
                 st.plotly_chart(
                     create_gauge_figure(game_info['final_adjusted_score'], global_stats['adjusted_avg'], "Final Adjusted Score"),
                     use_container_width=True
                 )
-                st.metric("Adjusted Rank", f"#{int(game_info['Rank'])}")
+                st.metric(
+                    "Adjusted Rank", 
+                    f"#{int(game_info['Rank'])}",
+                    help="The game's final rank after applying the Bayesian average. This score is adjusted based on how many critics rated the game, providing a more statistically stable result."
+                )
             
-            # Add the explanatory caption below the gauges
             st.caption("The ▲/▼ number below each score shows its difference from the average of all games.")
 
         with col2:
-            st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
+            st.metric(
+                "Number of Ratings", 
+                f"{game_info['number_of_ratings']}",
+                help="The total number of critics who submitted a score. This is the 'n' in the ranking formula; a higher number gives the game's raw average more influence over its final score."
+            )
             play_rate = (game_info['number_of_ratings'] / num_total_critics) * 100
-            st.metric("Play Rate", f"{play_rate:.1f}%")
+            st.metric(
+                "Play Rate", 
+                f"{play_rate:.1f}%",
+                help="The percentage of the entire critic pool that rated this game. A high play rate indicates a mainstream or widely-discussed game."
+            )
             std_dev = game_ratings_df['score'].std() if game_info['number_of_ratings'] > 1 else "N/A"
-            st.metric("Controversy (Std Dev)", f"{std_dev:.3f}" if isinstance(std_dev, float) else std_dev)
+            st.metric(
+                "Controversy (Std Dev)", 
+                f"{std_dev:.3f}" if isinstance(std_dev, float) else std_dev,
+                help="The standard deviation of all scores this game received. A low number indicates critics generally agree on the score (consensus), while a high number indicates significant disagreement (controversy)."
+            )
 
 def display_ranking_breakdown(game_info):
     """Displays the expander explaining the Bayesian shrinkage calculation."""
