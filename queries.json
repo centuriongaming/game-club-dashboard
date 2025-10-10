@@ -41,3 +41,4 @@
     "FROM ObservedControversy oc, GlobalControversy gc",
     "ORDER BY controversy_score DESC"
   ]
+}
