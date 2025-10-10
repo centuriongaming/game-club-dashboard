@@ -18,7 +18,10 @@ def load_dashboard_data(_session):
     full_ratings_scaffold_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
     ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
 
-    rankings_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
+    # --- THIS LINE IS THE FIX ---
+    # Unpack both DataFrames, discarding the second one which isn't used here.
+    rankings_df, _ = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
+    
     critic_names = critics_df['critic_name'].tolist()
 
     total_ratings = len(ratings_df)
