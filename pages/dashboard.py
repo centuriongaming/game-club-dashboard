@@ -57,7 +57,7 @@ def display_kpis(kpis):
 def display_game_showcase(rankings_df):
     """Display the top and bottom ranked games based on the final adjusted rank."""
     with st.container(border=True):
-        st.subheader("Top & Bottom Ranked Games")
+        st.subheader("Game Leaderboard") # <-- Header updated
         if rankings_df.empty:
             st.info("No game rankings to display yet.")
             return
@@ -128,14 +128,14 @@ def main():
     tab1, tab2, tab3 = st.tabs(["Game Rankings", "Critic Analysis", "Upcoming Games"])
 
     with tab1:
-        # Define the columns to display in the simplified view
-        columns_to_show = ['Rank', 'game_name', 'average_score', 'number_of_ratings']
+        # --- THIS SECTION IS UPDATED ---
+        columns_to_show = ['Rank', 'game_name', 'final_adjusted_score', 'number_of_ratings']
         st.dataframe(
             rankings_df[columns_to_show],
             column_config={
                 "Rank": "Rank",
                 "game_name": "Game",
-                "average_score": st.column_config.NumberColumn("Avg. Score", format="%.2f"),
+                "final_adjusted_score": st.column_config.NumberColumn("Score", format="%.3f"),
                 "number_of_ratings": "# Ratings",
             },
             hide_index=True, use_container_width=True,
