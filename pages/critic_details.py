@@ -32,10 +32,10 @@ if selected_critic_name:
     game_stats['participation_rate'] = game_stats['rating_count'] / len(critics_df)
     game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left').fillna({'avg_game_score': 0, 'participation_rate': 0})
     
-    # 3. Calculate Critic Stats (n) - Simplified to avoid column collision
+    # 3. Calculate Critic Stats (n)
     critic_stats = all_ratings_df.groupby('critic_id').size().reset_index(name='n')
 
-    # 4. Build a "Scaffold" of every critic-game pair with corrected merge order
+    # 4. Build a "Scaffold" of every critic-game pair
     scaffold = critics_df.merge(all_games_df, how='cross')
     scaffold = pd.merge(scaffold, game_stats, on='game_id', how='left')
     scaffold = pd.merge(scaffold, critic_stats, left_on='id', right_on='critic_id', how='left')
@@ -84,23 +84,16 @@ if selected_critic_name:
         col3.metric("Final Controversy Score", f"{critic_breakdown['final_controversy_score']:.3f}")
         col4.metric("Games Nominated", f"{total_nominations}")
 
-    # (Expander and Tabs code remains the same as previous correct version)
+    # --- Controversy Score Breakdown Expander ---
     with st.expander("**Controversy Score Breakdown**"):
-        # ... (breakdown display logic) ...
-
-    st.subheader("Detailed Analysis")
-    most_contrarian_ratings = critic_ratings.sort_values('normalized_score_deviation', ascending=False).head(10)
-    most_contrarian_plays = details_df.sort_values('play_deviation', ascending=False).head(10)
-    most_contrarian_plays['participation_rate_percent'] = most_contrarian_plays['participation_rate'] * 100
-    
-    tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
-    
-    with tab1:
-        st.markdown("These are the games where the critic's score differed most from the group average.")
-        st.dataframe(
-            most_contrarian_ratings.rename(columns={'score': 'critic_score', 'normalized_score_deviation': 'deviation'})[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
-            column_config={
-                "game_name": "Game", "critic_score": "Their Score",
-                "avg_game_score": "Group Average", "deviation": st.column_config.NumberColumn("Score Deviation (0-1)", format="%.3f")
-            },
-            hide_index=
+        st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("1. Observed Score", f"{critic_breakdown['observed_score']:.3f}", help="The critic's raw, un-adjusted controversy score.")
+        col2.metric("2. Games Rated (n)", f"{critic_breakdown['n']:.0f}", help="The number of games rated by the critic, used to determine credibility.")
+        col3.metric("3. Group Average", f"{prior_score:.3f}", help="The average controversy score for the entire group.")
+        col4.metric("Credibility Weight", f"{critic_breakdown['credibility_weight']:.1%}", help=f"The weight given to the observed score. Calculated as n / (n + C), where C is {C}.")
+        
+        st.markdown("---")
+        st.markdown("##### Final Calculation")
+        st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
+        calculation_str = f"= ({critic_breakdown['credibility_weight']
