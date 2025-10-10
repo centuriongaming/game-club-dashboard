@@ -27,6 +27,7 @@ def load_queries():
             queries[key] = " ".join(value)
     return queries
 
+# utils.py
 @st.cache_data
 def calculate_controversy_scores(_session):
     """
@@ -42,11 +43,20 @@ def calculate_controversy_scores(_session):
     if all_ratings_df.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # --- THIS SECTION IS THE FIX ---
     # 2. Calculate Game Stats
+    # First, calculate the global average score to use as a neutral baseline.
+    global_avg_score = all_ratings_df['score'].mean()
+
     game_stats = all_ratings_df.groupby('game_id')['score'].agg(['mean', 'count']).rename(columns={'mean': 'avg_game_score', 'count': 'rating_count'})
     game_stats['participation_rate'] = game_stats['rating_count'] / len(critics_df)
-    game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left').fillna({'avg_game_score': 0, 'participation_rate': 0})
     
+    # Merge and fill any unrated games with the global average, NOT zero.
+    game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left')
+    game_stats['avg_game_score'] = game_stats['avg_game_score'].fillna(global_avg_score)
+    game_stats = game_stats.fillna({'rating_count': 0, 'participation_rate': 0})
+    
+    # --- The rest of the function proceeds with the corrected data ---
     # 3. Calculate Critic Stats (n)
     critic_stats = all_ratings_df.groupby('critic_id').size().reset_index(name='n')
 
