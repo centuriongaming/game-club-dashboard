@@ -31,7 +31,7 @@ if selected_critic_name:
             Game.id.label("game_id"),
             Game.game_name,
             sa.func.avg(Rating.score).label("avg_game_score"),
-            (sa.func.count(Rating.critic_id).cast(sa.Float) / session.query(sa.func.count(Critic.id)).scalar_one()).label("participation_rate")
+            (sa.func.count(Rating.critic_id).cast(sa.Float) / sa.select(sa.func.count(Critic.id)).scalar_subquery()).label("participation_rate")
         )
         .join(Rating, Game.id == Rating.game_id, isouter=True)
         .where(Game.upcoming == False)
