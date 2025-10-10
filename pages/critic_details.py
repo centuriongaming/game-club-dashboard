@@ -114,9 +114,15 @@ if selected_critic_name:
     # --- Controversy Score Breakdown Expander (REVISED) ---
     with st.expander("**Controversy Score Breakdown**", expanded=True):
         st.markdown("The final score is a weighted average of the critic's observed score and the group's average, adjusted for the number of games rated (`n`).")
-        c1, c2, c3, c4 = st.columns(4)
+
+        # Re-calculate weight and final score locally to ensure consistency
+        C = critic_breakdown['credibility_constant']
+        local_credibility_weight = games_rated_count / (games_rated_count + C) if (games_rated_count + C) > 0 else 0
         
-        # New, clearer help text for each metric
+        # This ensures the final calculation string uses the corrected weight
+        final_score_for_display = (local_credibility_weight * critic_breakdown['observed_score']) + ((1 - local_credibility_weight) * critic_breakdown['prior_score'])
+
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric(
             "1. Observed Score",
             f"{critic_breakdown['observed_score']:.3f}",
@@ -134,14 +140,14 @@ if selected_critic_name:
         )
         c4.metric(
             "Credibility Weight",
-            f"{critic_breakdown['credibility_weight']:.1%}",
-            help=f"The weight given to the critic's own Observed Score. Calculated as n / (n + C), where C is a constant set to {critic_breakdown['credibility_constant']}. A higher 'n' results in a higher weight."
+            f"{local_credibility_weight:.1%}",
+            help=f"The weight given to the critic's own Observed Score. Calculated as n / (n + C), where C is a constant set to {C}. A higher 'n' results in a higher weight."
         )
         
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average} $$')
-        calc_str = f"= ({critic_breakdown['credibility_weight']:.2f} × {critic_breakdown['observed_score']:.3f}) + ({1-critic_breakdown['credibility_weight']:.2f} × {critic_breakdown['prior_score']:.3f}) = **{critic_breakdown['final_controversy_score']:.3f}**"
+        calc_str = f"= ({local_credibility_weight:.2f} × {critic_breakdown['observed_score']:.3f}) + ({1-local_credibility_weight:.2f} × {critic_breakdown['prior_score']:.3f}) = **{final_score_for_display:.3f}**"
         st.markdown(calc_str)
 
 
