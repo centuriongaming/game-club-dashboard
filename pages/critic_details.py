@@ -85,4 +85,54 @@ if selected_critic_name:
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("1. Observed Score", f"{observed_score:.3f}", help="The critic's raw, un-adjusted controversy score.")
         col2.metric("2. Games Rated (n)", f"{n}", help="The number of games rated by the critic, used to determine credibility.")
-        col3.metric("3. Group Average", f"{prior_score:.3f}", help="The
+        col3.metric("3. Group Average", f"{prior_score:.3f}", help="The average controversy score for the entire group.")
+        col4.metric("Credibility Weight", f"{credibility_weight:.1%}", help=f"The weight given to the observed score. Calculated as n / (n + C), where C is {C}.")
+        
+        st.markdown("---")
+        st.markdown("##### Final Calculation")
+        st.latex(r'''\text{Final Score} = (\text{Weight} \times \text{Observed}) + (1 - \text{Weight}) \times \text{Group Average}''')
+        calculation_str = f"= ({credibility_weight:.2f} \times {observed_score:.3f}) + ({1-credibility_weight:.2f}) \times {prior_score:.3f} = {critic_breakdown['controversy_score']:.3f}"
+        st.markdown(f"**{calculation_str}**")
+
+    # --- Detailed Analysis Tabs ---
+    st.subheader("Detailed Analysis")
+    
+    critic_ratings['deviation'] = (critic_ratings['critic_score'] - critic_ratings['avg_game_score']).abs()
+    most_contrarian_ratings = critic_ratings.sort_values('deviation', ascending=False).head(10)
+    details_df['play_decision_diff'] = (details_df['critic_score'].notna().astype(int) - details_df['participation_rate']).abs()
+    most_contrarian_plays = details_df.sort_values('play_decision_diff', ascending=False).head(10)
+
+    tab1, tab2, tab3 = st.tabs(["Most Contrarian Ratings", "Contrarian Participation", "Full Rating History"])
+
+    with tab1:
+        st.markdown("These are the games where the critic's score differed most from the group average.")
+        st.dataframe(
+            most_contrarian_ratings[['game_name', 'critic_score', 'avg_game_score', 'deviation']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score",
+                "avg_game_score": "Group Average", "deviation": st.column_config.BarChartColumn("Deviation")
+            },
+            hide_index=True, use_container_width=True
+        )
+
+    with tab2:
+        st.markdown("These are the games where the critic's decision to play or not play went against the grain the most.")
+        st.dataframe(
+            most_contrarian_plays[['game_name', 'critic_score', 'participation_rate']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score (if played)",
+                "participation_rate": st.column_config.ProgressColumn("Group Participation Rate", format="%.0f%%", min_value=0, max_value=100)
+            },
+            hide_index=True, use_container_width=True
+        )
+
+    with tab3:
+        st.markdown("This is the critic's complete rating history for all games.")
+        st.dataframe(
+            critic_ratings[['game_name', 'critic_score', 'avg_game_score']],
+            column_config={
+                "game_name": "Game", "critic_score": "Their Score",
+                "avg_game_score": "Group Average"
+            },
+            hide_index=True, use_container_width=True
+        )
