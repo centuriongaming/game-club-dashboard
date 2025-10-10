@@ -16,16 +16,23 @@ session = get_sqla_session()
 
 # --- Cached Data Function ---
 @st.cache_data
-@st.cache_data
 def load_dashboard_data(_session):
     """
     Runs all expensive queries and calculations for the dashboard at once.
     """
-    # --- Correctly load each DataFrame directly from the database ---
+    # Load each DataFrame directly from the database
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
     games_df = pd.read_sql(sa.select(Game.id, Game.game_name).where(Game.upcoming == False), _session.bind)
     ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
-    
+
+    # --- ADD THIS DEBUGGING BLOCK ---
+    st.subheader("--- DEBUG INFO ---")
+    st.write("`critics_df` shape:", critics_df.shape)
+    st.write("`games_df` shape:", games_df.shape)
+    st.write("`ratings_df` shape (IMPORTANT):", ratings_df.shape)
+    st.dataframe(ratings_df.head())
+    st.subheader("--- END DEBUG INFO ---")
+    # --------------------------------
     # --- Call the utility function with the correct data ---
     rankings_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
 
