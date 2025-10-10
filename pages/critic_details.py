@@ -4,7 +4,7 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.orm import aliased
 from utils import check_auth, get_sqla_session, load_queries
-from models import Critic, Game, Rating
+from database_models import Critic, Game, Rating
 
 # --- Initial Setup ---
 check_auth()
