@@ -49,8 +49,11 @@ except Exception as e:
 game_map = pd.Series(games_df.id.values, index=games_df.game_name).to_dict()
 selected_game_name = st.selectbox("Select a Game to Analyze:", game_map.keys())
 
+# In pages/game_details.py
+
 if selected_game_name:
     # --- Get all pre-calculated data for the selected game ---
+    # This 'game_info' Series is now the single source of truth for all stats.
     game_info = rankings_df[rankings_df['game_name'] == selected_game_name].iloc[0]
     game_ratings_df = ratings_df[ratings_df['game_id'] == game_info['id']]
 
@@ -95,10 +98,13 @@ if selected_game_name:
     with st.expander("How the Final Adjusted Score is Calculated", expanded=False):
         st.markdown("The final score is a weighted average that is 'shrunk' towards a baseline, penalizing games for not being widely played.")
         c1, c2, c3, c4 = st.columns(4)
+        
+        # This section correctly pulls all data from the 'game_info' object
         c1.metric("1. Raw Average", f"{game_info['average_score']:.3f}", help="The simple average of all scores this game received.")
         c2.metric("2. Ratings (n)", f"{game_info['number_of_ratings']}", help="The number of critics who rated this game. This determines the weight of the Raw Average.")
         c3.metric("3. Pessimistic Prior", f"{game_info['pessimistic_prior']:.3f}", help="The baseline this score is pulled towards. It's the average 'pessimistic score' (avg - std dev) of all critics who skipped this game.")
         c4.metric("4. Skippers (C)", f"{game_info['number_of_skippers']}", help="The number of critics who did not rate this game. This determines the weight of the Pessimistic Prior.")
+        
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = \frac{(n \times \text{Raw Avg}) + (C \times \text{Pessimistic Prior})}{(n + C)} $$')
@@ -108,7 +114,7 @@ if selected_game_name:
     # --- Detailed Tabs ---
     st.subheader("Detailed Analysis")
     tab1, tab2, tab3 = st.tabs(["Score Distribution", "Critic Ratings", "Who Skipped?"])
-
+    
     with tab1:
         scores = game_ratings_df['score']
         kde = stats.gaussian_kde(scores)
