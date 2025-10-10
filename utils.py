@@ -42,6 +42,7 @@ def calculate_controversy_scores(_session):
 
     if all_ratings_df.empty:
         return pd.DataFrame(), pd.DataFrame()
+    critics_df = critics_df.rename(columns={'id': 'critic_id'})
 
     # 2. Calculate Game Stats
     global_avg_score = all_ratings_df['score'].mean()
