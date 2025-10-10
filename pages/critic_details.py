@@ -1,11 +1,11 @@
 # pages/critic_details.py
 import streamlit as st
 import pandas as pd
-from utils import check_auth, get_db_connection, load_queries
+from utils import check_auth, get_sqla_session, load_queries
 
 # --- Initial Setup ---
 check_auth()
-conn = get_db_connection()
+conn = get_sqla_session()
 queries = load_queries()
 
 # --- Page Configuration ---
