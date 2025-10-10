@@ -190,12 +190,12 @@ def main():
     st.set_page_config(page_title="Game Details", layout="wide")
     st.markdown("""
     <style>
-    /* Centers the metric value and delta */
+    /* Centers the value and delta inside the st.metric component */
     div[data-testid="stMetric"] {
         text-align: center;
     }
 
-    /* Centers the metric label */
+    /* Centers the label of the st.metric component */
     div[data-testid="stMetricLabel"] {
     display: flex;
     justify-content: center;
