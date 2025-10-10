@@ -12,13 +12,10 @@ st.set_page_config(page_title="Critic Details", layout="wide")
 check_auth()
 session = get_sqla_session()
 
-# --- Cached Data Function ---
-@st.cache_data
 def get_controversy_data(_session):
     """
     Performs the full, multi-step controversy calculation for ALL critics
     and returns the final scores and the detailed scaffold dataframe.
-    This function is cached to prevent re-running on every interaction.
     """
     # 1. Fetch Base Data
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name), _session.bind)
