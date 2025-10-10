@@ -37,48 +37,22 @@ def load_data(_conn):
     }
     
     return games_df, critics_with_stats_df, ratings_df, rankings_df, global_stats
-
+    
 # --- UI Component Functions ---
 
-def create_gauge_figure(value, reference, title, std_dev):
-    """
-    Creates a Plotly gauge figure with a custom delta annotation
-    that includes a neutral state.
-    """
-    # 1. Calculate the delta and the threshold
-    delta_val = value - reference
-    threshold = 0.5 * std_dev
-
-    # 2. Determine symbol, color, and text for the custom delta
-    if abs(delta_val) <= threshold:
-        symbol, color, delta_text = "~", "#7f8c8d", f"About Average ({delta_val:+.2f})"
-    elif delta_val > 0:
-        symbol, color, delta_text = "▲", "#27ae60", f"Above Average ({delta_val:+.2f})"
-    else: # delta_val < 0
-        symbol, color, delta_text = "▼", "#c0392b", f"Below Average ({delta_val:+.2f})"
-
-    # 3. Create the figure without the default delta
+def create_gauge_figure(value, reference, title):
+    """Creates a Plotly gauge figure."""
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", # Removed 'delta' from mode
+        mode="gauge+number+delta",
         value=value,
+        delta={'reference': reference, 'position': "bottom"},
         title={'text': title},
-        number={'font': {'color': color, 'size': 50}}, # Color the main number
         gauge={
             'axis': {'range': [0, 10]},
             'bar': GAUGE_COLORS['bar'],
             'steps': GAUGE_COLORS['steps']
         }
     ))
-    
-    # 4. Add the custom delta as an annotation
-    fig.add_annotation(
-        x=0.5, y=0.15,
-        xref="paper", yref="paper",
-        text=delta_text,
-        showarrow=False,
-        font=dict(color=color, size=14)
-    )
-    
     fig.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=10))
     return fig
 
@@ -90,26 +64,14 @@ def display_scorecard(game_info, game_ratings_df, num_total_critics, global_stat
         with col1:
             g_col1, g_col2 = st.columns(2)
             with g_col1:
-                # Pass the standard deviation for raw scores
                 st.plotly_chart(
-                    create_gauge_figure(
-                        value=game_info['average_score'], 
-                        reference=global_stats['avg_score'], 
-                        title="Raw Average Score", 
-                        std_dev=global_stats['std_dev']
-                    ),
+                    create_gauge_figure(game_info['average_score'], global_stats['avg_score'], "Raw Average Score"),
                     use_container_width=True
                 )
                 st.metric("Unadjusted Rank", f"#{int(game_info['Unadjusted Rank'])}")
             with g_col2:
-                # Pass the standard deviation for adjusted scores
                 st.plotly_chart(
-                    create_gauge_figure(
-                        value=game_info['final_adjusted_score'], 
-                        reference=global_stats['adjusted_avg'], 
-                        title="Final Adjusted Score", 
-                        std_dev=global_stats['adjusted_std']
-                    ),
+                    create_gauge_figure(game_info['final_adjusted_score'], global_stats['adjusted_avg'], "Final Adjusted Score"),
                     use_container_width=True
                 )
                 st.metric("Adjusted Rank", f"#{int(game_info['Rank'])}")
@@ -119,7 +81,7 @@ def display_scorecard(game_info, game_ratings_df, num_total_critics, global_stat
             st.metric("Play Rate", f"{play_rate:.1f}%")
             std_dev = game_ratings_df['score'].std() if game_info['number_of_ratings'] > 1 else "N/A"
             st.metric("Controversy (Std Dev)", f"{std_dev:.3f}" if isinstance(std_dev, float) else std_dev)
-            
+
 def display_ranking_breakdown(game_info):
     """Displays the expander explaining the Bayesian shrinkage calculation."""
     st.subheader("Ranking Breakdown")
