@@ -91,11 +91,11 @@ with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("##### Final Ranking")
-            st.markdown(f"**#1**: {best_adjusted['game_name']}")
+            st.markdown(f"**First**: {best_adjusted['game_name']}")
             st.markdown(f"**Last**: {worst_adjusted['game_name']} (#{worst_adjusted['Rank']})")
         with col2:
             st.markdown("##### Unadjusted Ranking")
-            st.markdown(f"**#1**: {best_unadjusted['game_name']}")
+            st.markdown(f"**First**: {best_unadjusted['game_name']}")
             st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
     else:
         st.info("No game rankings to display yet.")

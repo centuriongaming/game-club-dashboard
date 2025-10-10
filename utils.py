@@ -64,9 +64,26 @@ def calculate_controversy_scores(_session):
         return 0
     scaffold['play_deviation'] = scaffold.apply(calculate_play_deviation, axis=1)
 
-    # 7. Calculate Observed Score
-    scaffold['total_deviation'] = (0.5 * scaffold['normalized_score_deviation'].fillna(0)) + (0.5 * scaffold['play_deviation'])
-    observed_df = scaffold.groupby(['critic_name', 'n'])['total_deviation'].mean().reset_index().rename(columns={'total_deviation': 'observed_score'})
+    # 7. Calculate Observed Score (Revised Logic)
+
+    # 7a. Calculate the average score deviation ONLY on rated games
+    rated_scaffold = scaffold.dropna(subset=['score']).copy()
+    avg_score_dev = rated_scaffold.groupby('critic_id')['normalized_score_deviation'].mean().reset_index()
+    avg_score_dev = avg_score_dev.rename(columns={'normalized_score_deviation': 'avg_score_deviation'})
+
+    # 7b. Calculate the average play deviation across ALL possible games
+    avg_play_dev = scaffold.groupby('critic_id')['play_deviation'].mean().reset_index()
+    avg_play_dev = avg_play_dev.rename(columns={'play_deviation': 'avg_play_deviation'})
+
+    # 7c. Merge the two scores together
+    observed_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id')
+    observed_df = pd.merge(observed_df, avg_score_dev, on='critic_id', how='left')
+    observed_df = pd.merge(observed_df, avg_play_dev, on='critic_id', how='left')
+    observed_df = observed_df.fillna({'avg_score_deviation': 0, 'avg_play_deviation': 0})
+
+    # 7d. Combine them into the final observed score
+    observed_df['observed_score'] = (0.5 * observed_df['avg_score_deviation']) + (0.5 * observed_df['avg_play_deviation'])
+
 
     # 8. Apply Bayesian Shrinkage
     prior_score = observed_df['observed_score'].mean()
