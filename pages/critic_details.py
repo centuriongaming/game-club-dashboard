@@ -97,7 +97,8 @@ if selected_critic_name:
     critic_ratings = details_df.dropna(subset=['score'])
     
     # --- Scorecard Metrics ---
-    total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == critic_breakdown['id']).scalar()
+    critic_id = int(critic_breakdown['id']) 
+    total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == critic_id).scalar()
     participation_rate = critic_breakdown['n'] / details_df['game_id'].nunique() * 100
     avg_score = critic_ratings['score'].mean() if not critic_ratings.empty else 0
 
