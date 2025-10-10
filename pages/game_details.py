@@ -58,6 +58,8 @@ selected_game_name = st.selectbox("Select a Game to Analyze:", game_map.keys())
 
 # --- Temporary line to find your column name. You can remove this later. ---
 st.write("Available columns for critics:", critics_df.columns) 
+st.write("Columns in rankings_df:", rankings_df.columns)
+st.write("Columns in critics_df:", critics_df.columns)
 
 if selected_game_name:
     game_info = rankings_df.loc[rankings_df['game_name'] == selected_game_name].iloc[0]
