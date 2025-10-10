@@ -43,11 +43,11 @@ st.title("Game Deep Dive")
 # --- Database Connection & Data Loading ---
 try:
     conn = st.connection("mydb", type="sql")
-    games_df, critics_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg = load_data(conn)
+    # Unpack the new global_adjusted_std value
+    games_df, critics_df, ratings_df, global_avg_score, global_std_dev, rankings_df, global_adjusted_avg, global_adjusted_std = load_data(conn)
 except Exception as e:
     st.error(f"Database connection or data loading failed: {e}")
     st.stop()
-
 # --- Game Selection ---
 game_map = pd.Series(games_df.id.values, index=games_df.game_name).to_dict()
 selected_game_name = st.selectbox("Select a Game to Analyze:", game_map.keys())
