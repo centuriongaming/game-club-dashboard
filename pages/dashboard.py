@@ -4,13 +4,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import sqlalchemy as sa
-from utils import check_auth, get_sqla_session, load_queries
+from utils import check_auth, get_sqla_session, calculate_controversy_scores
 from database_models import Critic, Game, Rating
 
 # --- Initial Setup ---
 check_auth()
 session = get_sqla_session()
-queries = load_queries() # For the one remaining raw SQL query
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Dashboard", layout="wide")
@@ -27,7 +26,6 @@ with st.container(border=True):
     total_ratings_val = session.query(sa.func.count(Rating.id)).scalar()
     avg_score = session.query(sa.func.avg(Rating.score)).scalar()
     
-    # --- Corrected Participation Rate Calculation ---
     total_critics_subq = session.query(sa.func.count(Critic.id)).scalar_subquery()
     total_games_subq = session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar_subquery()
     total_ratings_subq = session.query(sa.func.count(Rating.score)).scalar_subquery()
@@ -76,27 +74,31 @@ rankings_stmt = (
 )
 
 rankings_df = pd.read_sql(rankings_stmt, session.bind)
-rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
-rankings_df['Rank'] = rankings_df.index + 1
-rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
+if not rankings_df.empty:
+    rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
+    rankings_df['Rank'] = rankings_df.index + 1
+    rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
 
 # --- Top & Bottom Ranked Games Showcase ---
 with st.container(border=True):
     st.subheader("Top & Bottom Ranked Games")
-    best_adjusted = rankings_df.loc[rankings_df['Rank'].idxmin()]
-    worst_adjusted = rankings_df.loc[rankings_df['Rank'].idxmax()]
-    best_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmin()]
-    worst_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmax()]
+    if not rankings_df.empty:
+        best_adjusted = rankings_df.loc[rankings_df['Rank'].idxmin()]
+        worst_adjusted = rankings_df.loc[rankings_df['Rank'].idxmax()]
+        best_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmin()]
+        worst_unadjusted = rankings_df.loc[rankings_df['Unadjusted Rank'].idxmax()]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("##### Final Ranking")
-        st.markdown(f"**First**: {best_adjusted['game_name']}")
-        st.markdown(f"**Last**: {worst_adjusted['game_name']} (#{worst_adjusted['Rank']})")
-    with col2:
-        st.markdown("##### Unadjusted Ranking")
-        st.markdown(f"**First**: {best_unadjusted['game_name']}")
-        st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("##### Final Ranking")
+            st.markdown(f"**#1**: {best_adjusted['game_name']}")
+            st.markdown(f"**Last**: {worst_adjusted['game_name']} (#{worst_adjusted['Rank']})")
+        with col2:
+            st.markdown("##### Unadjusted Ranking")
+            st.markdown(f"**#1**: {best_unadjusted['game_name']}")
+            st.markdown(f"**Last**: {worst_unadjusted['game_name']} (#{worst_unadjusted['Unadjusted Rank']})")
+    else:
+        st.info("No game rankings to display yet.")
 
 
 # --- Tabs for Main Content ---
@@ -112,7 +114,7 @@ with tab1:
             "Unadjusted Rank": "Unadjusted Rank",
             "number_of_ratings": "Ratings"
         },
-        hide_index=True, use_container_width=True
+        hide_index=True, width='stretch'
     )
 
 # --- Critic Analysis Tab ---
@@ -127,7 +129,7 @@ with tab2:
         )
         nomination_df = pd.read_sql(nomination_stmt, session.bind)
         nomination_df = nomination_df.set_index('critic_name').reindex(critic_names).fillna(0).reset_index()
-        pie_colors = [color_map[name] for name in nomination_df['critic_name']]
+        pie_colors = [color_map.get(name) for name in nomination_df['critic_name']]
         
         fig = go.Figure(data=[go.Pie(
             labels=nomination_df['critic_name'],
@@ -156,13 +158,12 @@ with tab2:
         if not binned_df.empty:
             binned_pivot = binned_df.pivot(index='score_bin', columns='critic_name', values='rating_count').fillna(0)
             binned_pivot = binned_pivot.reindex(columns=critic_names, fill_value=0)
-            bar_chart_colors = [color_map[name] for name in binned_pivot.columns]
+            bar_chart_colors = [color_map.get(name) for name in binned_pivot.columns]
             
             st.markdown("##### Score Distribution by Critic")
             st.bar_chart(binned_pivot, height=310, color=bar_chart_colors)
 
     st.subheader("Critics by Participation")
-    # We need total_games for this calculation, so we fetch it again if needed
     total_games_val = session.query(sa.func.count(Game.id)).where(Game.upcoming == False).scalar()
     participation_stmt = (
         sa.select(
@@ -184,22 +185,26 @@ with tab2:
             "average_score": st.column_config.ProgressColumn("Average Score",format="%.2f",min_value=0,max_value=10),
             "participation_rate": st.column_config.ProgressColumn("Participation",format="%.1f%%",min_value=0,max_value=100)
         },
-        hide_index=True, use_container_width=True
+        hide_index=True, width='stretch'
     )
     
     st.subheader("Critic Controversy Ranking")
-    st.caption("The score represents how a critic's rating and participation deviates from the group consensus.")
-    critic_controversy_df = pd.read_sql(sa.text(queries['get_critic_controversy']), session.bind)
-    critic_controversy_df['Rank'] = critic_controversy_df['controversy_score'].rank(method='min', ascending=False).astype(int)
+    st.caption("A statistically-adjusted score representing how a critic's rating and participation deviates from the group consensus.")
+    
+    critic_controversy_df = calculate_controversy_scores(session)
+    
+    critic_controversy_df = critic_controversy_df.reset_index(drop=True)
+    critic_controversy_df['Rank'] = critic_controversy_df.index + 1
+    
     st.dataframe(
-        critic_controversy_df[['Rank', 'critic_name', 'controversy_score']],
+        critic_controversy_df[['Rank', 'critic_name', 'final_controversy_score']],
         column_config={
             "Rank": "Rank",
             "critic_name": "Critic",
-            "controversy_score": st.column_config.NumberColumn("Controversy Score", format="%.3f")
+            "final_controversy_score": st.column_config.NumberColumn("Final Controversy Score", format="%.3f")
         },
         hide_index=True,
-        use_container_width=True
+        width='stretch'
     )
 
 # --- Upcoming Games Tab ---
@@ -213,7 +218,7 @@ with tab3:
     upcoming_games_df = pd.read_sql(upcoming_stmt, session.bind)
     st.dataframe(
         upcoming_games_df.rename(columns={"game_name": "Game", "nominated_by": "Nominated By"}),
-        hide_index=True, use_container_width=True
+        hide_index=True, width='stretch'
     )
 
 # --- Log Out Button ---
