@@ -4,6 +4,7 @@
 streamlit
 pandas
 numpy
+scipy
 
 # Database Connection
 SQLAlchemy
