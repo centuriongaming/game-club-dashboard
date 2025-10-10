@@ -128,7 +128,7 @@ def display_critic_ratings(game_ratings_with_critics, global_std_dev):
     df = game_ratings_with_critics.copy()
     
     # **NOTE**: Assumes the critic stats df has this column. Change if the name is different.
-    critic_avg_col = 'average_score' 
+    critic_avg_col = 'critic_avg' 
     df['delta'] = df['score'] - df[critic_avg_col]
     
     threshold = 0.5 * global_std_dev
