@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.figure_factory as ff
 import plotly.express as px
 import sqlalchemy as sa
 from utils import check_auth, get_sqla_session, calculate_controversy_scores, calculate_custom_game_rankings
@@ -19,6 +20,14 @@ def load_dashboard_data(_session):
     ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
 
     rankings_df, _ = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
+    game_controversy = ratings_df.groupby('game_id')['score'].std().reset_index()
+    game_controversy = game_controversy.rename(columns={'score': 'controversy'})
+    game_controversy['controversy'] = game_controversy['controversy'].fillna(0) # Fill NaN for games with < 2 ratings
+
+    # Merge controversy into the rankings dataframe
+    rankings_df = pd.merge(rankings_df, game_controversy, left_on='id', right_on='game_id', how='left')
+    rankings_df['controversy'] = rankings_df['controversy'].fillna(0)
+
     critic_names = critics_df['critic_name'].tolist()
 
     total_ratings = len(ratings_df)
@@ -54,16 +63,35 @@ def display_kpis(kpis):
         col2.metric("Overall Average Score", f"{kpis['avg_score']:.2f}" if kpis['avg_score'] else "N/A")
         col3.metric("Group Participation", f"{kpis['group_participation']:.1f}%")
 
-def display_game_showcase(rankings_df):
-    """Display the top and bottom ranked games based on the final adjusted rank."""
+# In pages/dashboard.py
+
+def display_game_showcase(rankings_df, kpis): # <-- Add kpis to the function signature
+    """Display the top/bottom games and the new plots."""
     with st.container(border=True):
-        st.subheader("Game Leaderboard") # <-- Header updated
+        st.subheader("Game Leaderboard & Analysis") # Updated header
         if rankings_df.empty:
             st.info("No game rankings to display yet.")
             return
 
-        st.markdown(f"**First**: {rankings_df.iloc[0]['game_name']}")
-        st.markdown(f"**Last**: {rankings_df.iloc[-1]['game_name']} (#{rankings_df.iloc[-1]['Rank']})")
+        # Keep the First/Last display
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**First**: {rankings_df.iloc[0]['game_name']}")
+        with col2:
+            st.markdown(f"**Last**: {rankings_df.iloc[-1]['game_name']} (#{rankings_df.iloc[-1]['Rank']})")
+        
+        st.markdown("---") # Add a visual separator
+
+        # --- MOVE PLOTS HERE USING TABS ---
+        plot_tab1, plot_tab2 = st.tabs(["Score vs. Controversy Plot", "Overall Score Distribution"])
+
+        with plot_tab1:
+            # This function call is now here
+            display_score_vs_controversy_plot(rankings_df)
+
+        with plot_tab2:
+            # This function call is now here
+            display_overall_score_distribution(kpis['ratings_df'], kpis['avg_score'])
 
 def display_critic_visuals(nomination_df, binned_df, critic_names, color_map):
     """Display the pie and bar charts for critic analysis."""
@@ -81,6 +109,63 @@ def display_critic_visuals(nomination_df, binned_df, critic_names, color_map):
             binned_pivot = binned_df.pivot(index='score_bin', columns='critic_name', values='rating_count').reindex(columns=critic_names, fill_value=0)
             bar_chart_colors = [color_map.get(name) for name in binned_pivot.columns]
             st.bar_chart(binned_pivot, height=310, color=bar_chart_colors)
+
+def display_score_vs_controversy_plot(rankings_df):
+    """Displays an interactive scatter plot of game scores vs. controversy."""
+    st.subheader("Score vs. Controversy Analysis")
+    st.caption("Hover over a point to see game details. Bubble size represents the number of ratings.")
+
+    if rankings_df.empty or 'controversy' not in rankings_df:
+        st.info("Not enough data to generate plot.")
+        return
+
+    fig = px.scatter(
+        rankings_df,
+        x="final_adjusted_score",
+        y="controversy",
+        size="number_of_ratings",
+        color="average_score",
+        color_continuous_scale=px.colors.sequential.Viridis,
+        hover_name="game_name",
+        hover_data=['Rank', 'number_of_ratings', 'average_score'],
+        labels={
+            "final_adjusted_score": "Final Adjusted Score (Higher is Better)",
+            "controversy": "Controversy (Score Standard Deviation)",
+            "number_of_ratings": "# of Ratings",
+            "average_score": "Raw Avg Score"
+        },
+        title="Game Score vs. Controversy Quadrant"
+    )
+    fig.update_layout(xaxis_title="Final Adjusted Score", yaxis_title="Controversy (Std. Dev.)")
+    st.plotly_chart(fig, use_container_width=True)
+
+def display_overall_score_distribution(ratings_df, avg_score):
+    """Displays a KDE plot of all scores given by the group."""
+    st.subheader("Overall Score Distribution")
+    
+    if ratings_df.empty or ratings_df['score'].nunique() < 2:
+        st.info("At least two unique scores are needed to generate a distribution plot.")
+        return
+
+    # Create the distplot
+    fig = ff.create_distplot(
+        [ratings_df['score']],
+        ['Overall Scores'],
+        bin_size=.25,
+        show_hist=False,
+        show_rug=False
+    )
+    
+    # Add a vertical line for the mean
+    fig.add_vline(x=avg_score, line_width=2, line_dash="dash", line_color="red", annotation_text=f"Mean: {avg_score:.2f}")
+
+    fig.update_layout(
+        title_text='Group Rating Density (KDE)',
+        xaxis_title="Score",
+        yaxis_title="Density",
+        showlegend=False
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 def display_controversy_table(session):
     """Display the ranked table of critic controversy scores."""
@@ -127,7 +212,7 @@ def main():
 
     # Display UI components
     display_kpis(kpis)
-    display_game_showcase(rankings_df)
+    display_game_showcase(rankings_df, kpis)
 
     # --- Tabs for Main Content ---
     tab1, tab2, tab3 = st.tabs(["Game Rankings", "Critic Analysis", "Upcoming Games"])
