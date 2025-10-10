@@ -31,7 +31,11 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         final_score = critic_breakdown['final_controversy_score']
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("1. Observed Score", f"{critic_breakdown['observed_score']:.3f}", help="A raw measure of this critic's tendency to deviate from the group, based on both their rating scores and participation habits.")
+        c1.metric(
+            "1. Observed Score", 
+            f"{critic_breakdown['observed_score']:.3f}", 
+            help="A 50/50 average of Score Deviation and Play Deviation. For critics with fewer than 10 reviews, Play Deviation is 0, which intentionally pulls this score closer to zero."
+        )
         c2.metric("2. Games Rated (n)", f"{games_rated_count:.0f}", help="The number of games rated, used to calculate credibility.")
         c3.metric("3. Group Average", f"{critic_breakdown['prior_score']:.3f}", help="The average controversy score of all critics, used as a baseline.")
         c4.metric("Credibility Weight", f"{weight:.1%}", help=f"The weight given to the critic's Observed Score. Calculated as n / (n + Threshold), where the threshold is dynamically set to {threshold} (half the total games).")
@@ -52,7 +56,7 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         | **Final Score** | | **Sum →** | **`= {final_score:.3f}`** |
         """
         st.markdown(calculation_table)
-
+1
 def display_analysis_tabs(critic_ratings, details_df):
     """Renders the three tabs with detailed breakdown tables."""
     st.subheader("Detailed Analysis")
