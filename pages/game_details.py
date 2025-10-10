@@ -64,64 +64,78 @@ if selected_game_name:
         st.warning(f"No ratings have been submitted for **{selected_game_name}** yet.")
         st.stop()
 
-    # --- Main Scorecard ---
-    st.subheader(f"Overall Scorecard for {selected_game_name}")
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            g_col1, g_col2 = st.columns(2)
-            # --- Raw Score Gauge and Rank ---
-            with g_col1:
-                raw_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number", value=game_info['average_score'],
-                    title={'text': "Raw Average Score"},
-                    gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
-                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
-                ))
-                raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
-                st.plotly_chart(raw_gauge, use_container_width=True)
+Got it. Here's the updated code for the main scorecard that adjusts the layout to your specifications.
 
-                # Custom three-state delta display
-                raw_delta = game_info['average_score'] - global_avg_score
-                raw_threshold = 0.5 * global_std_dev
-                if raw_delta > raw_threshold:
-                    st.markdown(f"<p style='text-align: center; color: #27ae60;'>▲ {raw_delta:+.2f} (Higher than Average)</p>", unsafe_allow_html=True)
-                elif raw_delta < -raw_threshold:
-                    st.markdown(f"<p style='text-align: center; color: #c0392b;'>▼ {raw_delta:+.2f} (Lower than Average)</p>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<p style='text-align: center; color: #7f8c8d;'>~ {raw_delta:+.2f} (About Average)</p>", unsafe_allow_html=True)
+The rank is now displayed in a larger, centered font below each gauge, and the delta comparison appears directly below the score inside the dial.
 
-                st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
+Updated Scorecard Code
+Replace the entire "Main Scorecard" section in your game_details.py file with this new version.
 
-            # --- Adjusted Score Gauge and Rank ---
-            with g_col2:
-                adj_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number", value=game_info['final_adjusted_score'],
-                    title={'text': "Final Adjusted Score"},
-                    gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
-                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
-                ))
-                adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
-                st.plotly_chart(adj_gauge, use_container_width=True)
+Python
 
-                st.metric("Adjusted Rank", f"#{game_info['Rank']}")
+# In pages/game_details.py
 
-                # Custom three-state delta display
-                adj_delta = game_info['final_adjusted_score'] - global_adjusted_avg
-                adj_threshold = 0.5 * global_adjusted_std
-                if adj_delta > adj_threshold:
-                    st.markdown(f"<p style='text-align: center; color: #27ae60;'>▲ {adj_delta:+.2f} (Higher than Average)</p>", unsafe_allow_html=True)
-                elif adj_delta < -adj_threshold:
-                    st.markdown(f"<p style='text-align: center; color: #c0392b;'>▼ {adj_delta:+.2f} (Lower than Average)</p>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<p style='text-align: center; color: #7f8c8d;'>~ {adj_delta:+.2f} (About Average)</p>", unsafe_allow_html=True)
+# --- Main Scorecard ---
+st.subheader(f"Overall Scorecard for {selected_game_name}")
+with st.container(border=True):
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        g_col1, g_col2 = st.columns(2)
+        # --- Raw Score Gauge and Rank ---
+        with g_col1:
+            # The delta is now part of the title for placement
+            raw_delta = game_info['average_score'] - global_avg_score
+            raw_threshold = 0.5 * global_std_dev
+            if raw_delta > raw_threshold:
+                delta_symbol = f"▲ {raw_delta:+.2f}"
+            elif raw_delta < -raw_threshold:
+                delta_symbol = f"▼ {raw_delta:+.2f}"
+            else:
+                delta_symbol = f"~ {raw_delta:+.2f}"
 
-        # --- Right-hand metrics ---
-        with col2:
-            st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
-            play_rate = (game_info['number_of_ratings'] / len(critics_df)) * 100
-            st.metric("Play Rate", f"{play_rate:.1f}%")
-            st.metric("Controversy (Std Dev)", f"{game_ratings_df['score'].std():.3f}" if game_info['number_of_ratings'] > 1 else "N/A")
+            raw_gauge = go.Figure(go.Indicator(
+                mode="gauge+number", value=game_info['average_score'],
+                title={'text': f"Raw Average Score<br><span style='font-size:0.8em;color:gray'>{delta_symbol} vs Global Avg</span>"},
+                gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
+                       'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
+            ))
+            raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=60, b=20))
+            st.plotly_chart(raw_gauge, use_container_width=True)
+
+            # Display rank in a larger, centered font
+            st.markdown(f"<h4 style='text-align: center; font-weight: normal;'>Unadjusted Rank #{game_info['Unadjusted Rank']}</h4>", unsafe_allow_html=True)
+
+        # --- Adjusted Score Gauge and Rank ---
+        with g_col2:
+            # The delta is now part of the title for placement
+            adj_delta = game_info['final_adjusted_score'] - global_adjusted_avg
+            adj_threshold = 0.5 * global_adjusted_std
+            if adj_delta > adj_threshold:
+                adj_delta_symbol = f"▲ {adj_delta:+.2f}"
+            elif adj_delta < -adj_threshold:
+                adj_delta_symbol = f"▼ {adj_delta:+.2f}"
+            else:
+                adj_delta_symbol = f"~ {adj_delta:+.2f}"
+
+            adj_gauge = go.Figure(go.Indicator(
+                mode="gauge+number", value=game_info['final_adjusted_score'],
+                title={'text': f"Final Adjusted Score<br><span style='font-size:0.8em;color:gray'>{adj_delta_symbol} vs Global Avg</span>"},
+                gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
+                       'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
+            ))
+            adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=60, b=20))
+            st.plotly_chart(adj_gauge, use_container_width=True)
+            
+            # Display rank in a larger, centered font
+            st.markdown(f"<h4 style='text-align: center; font-weight: normal;'>Adjusted Rank #{game_info['Rank']}</h4>", unsafe_allow_html=True)
+
+    # --- Right-hand metrics ---
+    with col2:
+        st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
+        play_rate = (game_info['number_of_ratings'] / len(critics_df)) * 100
+        st.metric("Play Rate", f"{play_rate:.1f}%")
+        st.metric("Controversy (Std Dev)", f"{game_ratings_df['score'].std():.3f}" if game_info['number_of_ratings'] > 1 else "N/A")
+
 
     # --- Adjusted Score Breakdown ---
     st.subheader("Ranking Breakdown")
