@@ -112,7 +112,6 @@ def calculate_custom_game_rankings(games_df, critics_df, ratings_df):
     critics_with_stats_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id', how='left')
     global_avg_fallback = ratings_df['score'].mean()
 
-    # 2. Define the calculation to be applied to each game
     def calculate_game_rank(game_group):
         n = len(game_group)
         game_avg = game_group['score'].mean()
@@ -136,20 +135,21 @@ def calculate_custom_game_rankings(games_df, critics_df, ratings_df):
         denominator = n + n_skipped
         adjusted_score = numerator / denominator if denominator > 0 else 0
         
+        # UPDATE: Return all the components we need for the breakdown
         return pd.Series({
             'number_of_ratings': n,
             'average_score': game_avg,
+            'pessimistic_prior': pessimistic_prior,
+            'number_of_skippers': n_skipped,
             'final_adjusted_score': adjusted_score
         })
 
-    # Run the calculation for every game
+    # ... (the rest of the function is the same)
     rankings_df = ratings_df.groupby('game_id').apply(calculate_game_rank)
     rankings_df = pd.merge(games_df, rankings_df, left_on='id', right_on='game_id')
     
-    # 3. Sort and add final rank columns
     rankings_df = rankings_df.sort_values("final_adjusted_score", ascending=False).reset_index(drop=True)
     rankings_df['Rank'] = rankings_df.index + 1
     rankings_df['Unadjusted Rank'] = rankings_df['average_score'].rank(method='min', ascending=False).astype(int)
 
-    # 4. Return BOTH the rankings and the critic stats
     return rankings_df, critics_with_stats_df

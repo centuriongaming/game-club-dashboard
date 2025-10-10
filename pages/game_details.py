@@ -50,73 +50,59 @@ game_map = pd.Series(games_df.id.values, index=games_df.game_name).to_dict()
 selected_game_name = st.selectbox("Select a Game to Analyze:", game_map.keys())
 
 if selected_game_name:
-    selected_game_id = game_map[selected_game_name]
-    game_ratings_df = ratings_df[ratings_df['game_id'] == selected_game_id]
-    
+    # --- Get all pre-calculated data for the selected game ---
+    game_info = rankings_df[rankings_df['game_name'] == selected_game_name].iloc[0]
+    game_ratings_df = ratings_df[ratings_df['game_id'] == game_info['id']]
+
     if game_ratings_df.empty:
         st.warning(f"No ratings have been submitted for **{selected_game_name}** yet.")
         st.stop()
 
-    # --- Calculate All Game-Specific Metrics ---
-    avg_score = game_ratings_df['score'].mean()
-    controversy = game_ratings_df['score'].std()
-    ratings_count = len(game_ratings_df)
-    
-    # Get the game's rank info from the pre-calculated dataframe
-    game_rank_info = rankings_df[rankings_df['game_name'] == selected_game_name].iloc[0]
-    final_adjusted_score = game_rank_info['final_adjusted_score']
-    unadjusted_rank = game_rank_info['Unadjusted Rank']
-    adjusted_rank = game_rank_info['Rank']
-    
     # --- Main Scorecard ---
     st.subheader(f"Overall Scorecard for {selected_game_name}")
     with st.container(border=True):
         col1, col2 = st.columns([3, 1])
         with col1:
             g_col1, g_col2 = st.columns(2)
-            # Gauge 1: Raw Average Score
             with g_col1:
                 raw_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number+delta", value = avg_score,
-                    delta = {'reference': global_avg_score, 'position': "bottom"},
-                    title = {'text': "Raw Average Score"},
-                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"}, # Blue color
-                        'steps': [ {'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]
-                    }))
+                    mode="gauge+number+delta", value=game_info['average_score'],
+                    delta={'reference': global_avg_score, 'position': "bottom"},
+                    title={'text': "Raw Average Score"},
+                    gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
+                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
+                ))
                 raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(raw_gauge, use_container_width=True)
-            # Gauge 2: Final Adjusted Score
             with g_col2:
                 adj_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number+delta", value = final_adjusted_score,
-                    delta = {'reference': global_adjusted_avg, 'position': "bottom"},
-                    title = {'text': "Final Adjusted Score"},
-                    gauge = { 'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"}, # Same blue color
-                        'steps': [ {'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]
-                    }))
+                    mode="gauge+number+delta", value=game_info['final_adjusted_score'],
+                    delta={'reference': global_adjusted_avg, 'position': "bottom"},
+                    title={'text': "Final Adjusted Score"},
+                    gauge={'axis': {'range': [0, 10]}, 'bar': {'color': "#3498db"},
+                           'steps': [{'range': [0, 5], 'color': "#e74c3c"}, {'range': [5, 7.5], 'color': "#f1c40f"}, {'range': [7.5, 10], 'color': "#2ecc71"}]}
+                ))
                 adj_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(adj_gauge, use_container_width=True)
-
         with col2:
-            st.metric("Unadjusted Rank", f"#{unadjusted_rank}")
-            st.metric("Adjusted Rank", f"#{adjusted_rank}")
-            st.metric("Number of Ratings", f"{ratings_count}")
-            st.metric("Controversy (Std Dev)", f"{controversy:.3f}" if controversy else "N/A")
-
+            st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
+            st.metric("Adjusted Rank", f"#{game_info['Rank']}")
+            st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
+            st.metric("Controversy (Std Dev)", f"{game_ratings_df['score'].std():.3f}" if game_info['number_of_ratings'] > 1 else "N/A")
 
     # --- Adjusted Score Breakdown ---
     st.subheader("Ranking Breakdown")
     with st.expander("How the Final Adjusted Score is Calculated", expanded=False):
         st.markdown("The final score is a weighted average that is 'shrunk' towards a baseline, penalizing games for not being widely played.")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("1. Raw Average", f"{avg_score:.3f}", help="The simple average of all scores this game received.")
-        c2.metric("2. Ratings (n)", f"{ratings_count}", help="The number of critics who rated this game. This determines the weight of the Raw Average.")
-        c3.metric("3. Pessimistic Prior", f"{pessimistic_prior:.3f}", help="The baseline this score is pulled towards. It's the average 'pessimistic score' (avg - std dev) of all critics who skipped this game.")
-        c4.metric("4. Skippers (C)", f"{n_skipped}", help="The number of critics who did not rate this game. This determines the weight of the Pessimistic Prior.")
+        c1.metric("1. Raw Average", f"{game_info['average_score']:.3f}", help="The simple average of all scores this game received.")
+        c2.metric("2. Ratings (n)", f"{game_info['number_of_ratings']}", help="The number of critics who rated this game. This determines the weight of the Raw Average.")
+        c3.metric("3. Pessimistic Prior", f"{game_info['pessimistic_prior']:.3f}", help="The baseline this score is pulled towards. It's the average 'pessimistic score' (avg - std dev) of all critics who skipped this game.")
+        c4.metric("4. Skippers (C)", f"{game_info['number_of_skippers']}", help="The number of critics who did not rate this game. This determines the weight of the Pessimistic Prior.")
         st.markdown("---")
         st.markdown("##### Final Calculation")
         st.markdown(r'$$ \text{Final Score} = \frac{(n \times \text{Raw Avg}) + (C \times \text{Pessimistic Prior})}{(n + C)} $$')
-        calc_str = f"= (({ratings_count} × {avg_score:.3f}) + ({n_skipped} × {pessimistic_prior:.3f})) / ({ratings_count} + {n_skipped}) = **{final_adjusted_score:.3f}**"
+        calc_str = f"= (({game_info['number_of_ratings']} × {game_info['average_score']:.3f}) + ({game_info['number_of_skippers']} × {game_info['pessimistic_prior']:.3f})) / ({game_info['number_of_ratings']} + {game_info['number_of_skippers']}) = **{game_info['final_adjusted_score']:.3f}**"
         st.markdown(calc_str)
     
     # --- Detailed Tabs ---
