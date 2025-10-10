@@ -75,6 +75,10 @@ def display_scorecard(game_info, game_ratings_df, num_total_critics, global_stat
                     use_container_width=True
                 )
                 st.metric("Adjusted Rank", f"#{int(game_info['Rank'])}")
+            
+            # Add the explanatory caption below the gauges
+            st.caption("The ▲/▼ number below each score shows its difference from the average of all games.")
+
         with col2:
             st.metric("Number of Ratings", f"{game_info['number_of_ratings']}")
             play_rate = (game_info['number_of_ratings'] / num_total_critics) * 100
