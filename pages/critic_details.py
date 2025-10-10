@@ -22,48 +22,33 @@ if selected_critic_name:
     selected_critic_id = critic_map[selected_critic_name]
 
     # --- Full Controversy Calculation in Python/Pandas ---
-    
-    # 1. Fetch Base Data
     all_games_df = pd.read_sql(sa.select(Game.id.label("game_id"), Game.game_name).where(Game.upcoming == False), session.bind)
     all_ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), session.bind)
     
-    # 2. Calculate Game Stats
     game_stats = all_ratings_df.groupby('game_id')['score'].agg(['mean', 'count']).rename(columns={'mean': 'avg_game_score', 'count': 'rating_count'})
     game_stats['participation_rate'] = game_stats['rating_count'] / len(critics_df)
     game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left').fillna({'avg_game_score': 0, 'participation_rate': 0})
     
-    # 3. Calculate Critic Stats (n)
     critic_stats = all_ratings_df.groupby('critic_id').size().reset_index(name='n')
-
-    # 4. Build a "Scaffold" of every critic-game pair
+    
     scaffold = critics_df.merge(all_games_df, how='cross')
-    
-    # FIX: Drop the redundant 'game_name' column from game_stats before merging to prevent a name collision
     scaffold = pd.merge(scaffold, game_stats.drop(columns=['game_name']), on='game_id', how='left')
-    
     scaffold = pd.merge(scaffold, critic_stats, left_on='id', right_on='critic_id', how='left')
     scaffold = pd.merge(scaffold, all_ratings_df, on=['critic_id', 'game_id'], how='left')
     scaffold['n'] = scaffold['n'].fillna(0).astype(int)
-
-    # 5. Calculate Deviations
-    scaffold['normalized_score_deviation'] = (scaffold['score'] - scaffold['avg_game_score']).abs() / 10.0
     
     def calculate_play_deviation(row):
-        if row['n'] < 10:
-            return 0
+        if row['n'] < 10: return 0
         is_rated = pd.notna(row['score'])
-        if is_rated and row['participation_rate'] <= 0.5:
-            return 1.0 - row['participation_rate']
-        elif not is_rated and row['participation_rate'] > 0.5:
-            return row['participation_rate']
+        if is_rated and row['participation_rate'] <= 0.5: return 1.0 - row['participation_rate']
+        elif not is_rated and row['participation_rate'] > 0.5: return row['participation_rate']
         return 0
     scaffold['play_deviation'] = scaffold.apply(calculate_play_deviation, axis=1)
-
-    # 7. Calculate Observed Score for each critic
+    
+    scaffold['normalized_score_deviation'] = (scaffold['score'] - scaffold['avg_game_score']).abs() / 10.0
     scaffold['total_deviation'] = (0.5 * scaffold['normalized_score_deviation'].fillna(0)) + (0.5 * scaffold['play_deviation'])
     observed_controversy_df = scaffold.groupby(['critic_name', 'n'])['total_deviation'].mean().reset_index().rename(columns={'total_deviation': 'observed_score'})
-
-    # 8. Apply Bayesian Shrinkage
+    
     prior_score = observed_controversy_df['observed_score'].mean()
     C = 15
     observed_controversy_df['credibility_weight'] = observed_controversy_df['n'] / (observed_controversy_df['n'] + C)
@@ -76,7 +61,8 @@ if selected_critic_name:
     total_nominations = session.query(sa.func.count(Game.id)).filter(Game.nominated_by == selected_critic_id).scalar()
     
     # --- Scorecard ---
-    participation_rate = (critic_breakdown['n'] / len(all_games_df)) * 100 if len(all_games_df) > 0 else 0
+    # FIX: Use the more direct calculation for participation rate
+    participation_rate = (len(critic_ratings) / len(details_df)) * 100 if len(details_df) > 0 else 0
     avg_score = critic_ratings['score'].mean() if not critic_ratings.empty else 0
 
     st.subheader(f"Scorecard for {selected_critic_name}")
@@ -86,6 +72,7 @@ if selected_critic_name:
         col2.metric("Average Score Given", f"{avg_score:.2f}")
         col3.metric("Final Controversy Score", f"{critic_breakdown['final_controversy_score']:.3f}")
         col4.metric("Games Nominated", f"{total_nominations}")
+
 
     # (Expander and Tabs code remains the same)
     with st.expander("**Controversy Score Breakdown**"):
