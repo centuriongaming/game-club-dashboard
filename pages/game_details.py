@@ -81,8 +81,6 @@ if selected_game_name:
                 raw_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(raw_gauge, use_container_width=True)
 
-                st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
-
                 # Custom three-state delta display
                 raw_delta = game_info['average_score'] - global_avg_score
                 raw_threshold = 0.5 * global_std_dev
@@ -92,6 +90,8 @@ if selected_game_name:
                     st.markdown(f"<p style='text-align: center; color: #c0392b;'>▼ {raw_delta:+.2f} (Lower than Average)</p>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<p style='text-align: center; color: #7f8c8d;'>~ {raw_delta:+.2f} (About Average)</p>", unsafe_allow_html=True)
+
+                st.metric("Unadjusted Rank", f"#{game_info['Unadjusted Rank']}")
 
             # --- Adjusted Score Gauge and Rank ---
             with g_col2:
