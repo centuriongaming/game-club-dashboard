@@ -99,7 +99,9 @@ def display_controversy_table(session):
     st.dataframe(
         critic_controversy_df[['Rank', 'critic_name', 'final_controversy_score']],
         column_config={
-            "Rank": "Rank", "critic_name": "Critic",
+            # This line ensures the rank is displayed as a whole number
+            "Rank": st.column_config.NumberColumn("Rank", format="%d"), 
+            "critic_name": "Critic",
             "final_controversy_score": st.column_config.NumberColumn("Final Controversy Score", format="%.3f")
         },
         hide_index=True, use_container_width=True
