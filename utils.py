@@ -43,33 +43,27 @@ def calculate_controversy_scores(_session):
     if all_ratings_df.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    # --- THIS SECTION IS THE FIX ---
     # 2. Calculate Game Stats
-    # First, calculate the global average score to use as a neutral baseline.
     global_avg_score = all_ratings_df['score'].mean()
-
     game_stats = all_ratings_df.groupby('game_id')['score'].agg(['mean', 'count']).rename(columns={'mean': 'avg_game_score', 'count': 'rating_count'})
     game_stats['participation_rate'] = game_stats['rating_count'] / len(critics_df)
-    
-    # Merge and fill any unrated games with the global average, NOT zero.
     game_stats = pd.merge(all_games_df, game_stats, on='game_id', how='left')
     game_stats['avg_game_score'] = game_stats['avg_game_score'].fillna(global_avg_score)
     game_stats = game_stats.fillna({'rating_count': 0, 'participation_rate': 0})
     
-    # --- The rest of the function proceeds with the corrected data ---
-    # 3. Calculate Critic Stats (n)
-    critic_stats = all_ratings_df.groupby('critic_id').size().reset_index(name='n')
-
-    # 4. Build a "Scaffold" of every critic-game pair
+    # 3. Build the Scaffold (we no longer need a separate critic_stats calculation)
     scaffold = critics_df.merge(all_games_df, how='cross')
     scaffold = pd.merge(scaffold, game_stats.drop(columns=['game_name']), on='game_id', how='left')
-    scaffold = pd.merge(scaffold, critic_stats, left_on='id', right_on='critic_id', how='left')
     scaffold = pd.merge(scaffold, all_ratings_df, on=['critic_id', 'game_id'], how='left')
-    scaffold['n'] = scaffold['n'].fillna(0).astype(int)
 
-    # 5. Calculate Deviations
+    # 4. Calculate Deviations
     scaffold['normalized_score_deviation'] = (scaffold['score'] - scaffold['avg_game_score']).abs() / 10.0
     
+    # We need a temporary 'n' on the scaffold for the play_deviation calculation
+    n_temp = scaffold.dropna(subset=['score']).groupby('critic_id').size().reset_index(name='n')
+    scaffold = pd.merge(scaffold, n_temp, on='critic_id', how='left')
+    scaffold['n'] = scaffold['n'].fillna(0).astype(int)
+
     def calculate_play_deviation(row):
         if row['n'] < 10: return 0
         is_rated = pd.notna(row['score'])
@@ -78,18 +72,24 @@ def calculate_controversy_scores(_session):
         return 0
     scaffold['play_deviation'] = scaffold.apply(calculate_play_deviation, axis=1)
 
-    # 7. Calculate Observed Score
+    # 5. Calculate Observed Score
     rated_scaffold = scaffold.dropna(subset=['score']).copy()
     avg_score_dev = rated_scaffold.groupby('critic_id')['normalized_score_deviation'].mean().reset_index(name='avg_score_deviation')
     avg_play_dev = scaffold.groupby('critic_id')['play_deviation'].mean().reset_index(name='avg_play_deviation')
+    
+    # --- THIS SECTION CONTAINS THE FIX ---
+    # 6. Re-calculate 'n' from the scaffold to guarantee it matches the details page.
+    # This is now the definitive count of games rated.
+    n_definitive = scaffold.dropna(subset=['score']).groupby('critic_id').size().reset_index(name='n')
 
-    observed_df = pd.merge(critics_df, critic_stats, left_on='id', right_on='critic_id', how='left')
+    observed_df = pd.merge(critics_df, n_definitive, left_on='id', right_on='critic_id', how='left')
     observed_df = pd.merge(observed_df, avg_score_dev, on='critic_id', how='left')
     observed_df = pd.merge(observed_df, avg_play_dev, on='critic_id', how='left')
     observed_df = observed_df.fillna({'n': 0, 'avg_score_deviation': 0, 'avg_play_deviation': 0})
+    observed_df['n'] = observed_df['n'].astype(int)
     observed_df['observed_score'] = (0.5 * observed_df['avg_score_deviation']) + (0.5 * observed_df['avg_play_deviation'])
     
-    # 8. Apply Bayesian Shrinkage
+    # 7. Apply Bayesian Shrinkage using the definitive 'n'
     prior_score = observed_df['observed_score'].mean()
     total_games = len(all_games_df)
     credibility_threshold = max(1, total_games // 2)
