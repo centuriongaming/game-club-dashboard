@@ -20,12 +20,18 @@ def load_dashboard_data(_session):
     """
     Runs all expensive queries and calculations for the dashboard at once.
     """
-    # --- This is the corrected block ---
-    # It ensures each DataFrame is loaded directly and separately.
+    # --- Corrected Data Loading ---
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
     games_df = pd.read_sql(sa.select(Game.id, Game.game_name).where(Game.upcoming == False), _session.bind)
-    ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
-    # ----------------------------------
+    
+    # 1. Load the full 170-row scaffold from the database
+    full_ratings_scaffold_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
+
+    # 2. Create the true ratings_df by dropping rows where the score is NULL
+    ratings_df = full_ratings_scaffold_df.dropna(subset=['score']).copy()
+    
+    # The rest of the function will now work correctly
+    rankings_df = calculate_custom_game_rankings(games_df, critics_df, ratings_df)
 
 
     # --- ADD THIS DEBUGGING BLOCK ---
