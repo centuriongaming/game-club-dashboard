@@ -41,9 +41,8 @@
     "FROM ObservedControversy oc, GlobalControversy gc",
     "ORDER BY controversy_score DESC"
   ],
-  "get_critic_controversy_breakdown": [
+  "get_critic_observed_controversy": [
     "WITH Config AS (SELECT 0.5 AS score_weight, 0.5 AS play_weight, 10.0 AS max_score),",
-    "CredibilityConstant AS (SELECT 5 AS C),",
     "GameStats AS (",
     "  SELECT g.id AS game_id, AVG(r.score) AS avg_game_score,",
     "  COUNT(r.critic_id)::FLOAT / (SELECT COUNT(*) FROM critics) AS participation_rate",
@@ -65,25 +64,12 @@
     "  FROM CriticGameScaffold s",
     "  JOIN GameStats gs ON s.game_id = gs.game_id",
     "  LEFT JOIN ratings r ON s.critic_id = r.critic_id AND s.game_id = r.game_id",
-    "),",
-    "ObservedControversy AS (",
-    "  SELECT",
-    "    d.critic_name,",
-    "    AVG(COALESCE(d.normalized_score_deviation * (SELECT score_weight FROM Config), 0) + (d.play_deviation * (SELECT play_weight FROM Config))) AS observed_score,",
-    "    COUNT(d.rating_id) AS n",
-    "  FROM DeviationScores d",
-    "  GROUP BY d.critic_name",
-    "),",
-    "GlobalControversy AS (",
-    "  SELECT AVG(observed_score) AS prior_score FROM ObservedControversy",
     ")",
     "SELECT",
-    "  oc.critic_name,",
-    "  oc.observed_score,",
-    "  oc.n,",
-    "  gc.prior_score,",
-    "  (SELECT C FROM CredibilityConstant) AS credibility_constant,",
-    "  ((oc.n::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * oc.observed_score) + (((SELECT C FROM CredibilityConstant)::FLOAT / (oc.n + (SELECT C FROM CredibilityConstant))) * gc.prior_score) AS controversy_score",
-    "FROM ObservedControversy oc, GlobalControversy gc"
+    "  d.critic_name,",
+    "  AVG(COALESCE(d.normalized_score_deviation * (SELECT score_weight FROM Config), 0) + (d.play_deviation * (SELECT play_weight FROM Config))) AS observed_score,",
+    "  COUNT(d.rating_id) AS n",
+    "FROM DeviationScores d",
+    "GROUP BY d.critic_name"
   ]
 }
