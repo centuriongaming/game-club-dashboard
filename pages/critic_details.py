@@ -56,7 +56,7 @@ def display_controversy_breakdown(critic_breakdown, games_rated_count):
         | **Final Score** | | **Sum →** | **`= {final_score:.3f}`** |
         """
         st.markdown(calculation_table)
-1
+        
 def display_analysis_tabs(critic_ratings, details_df):
     """Renders the three tabs with detailed breakdown tables."""
     st.subheader("Detailed Analysis")
