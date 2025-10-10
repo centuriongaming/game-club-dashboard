@@ -104,23 +104,29 @@ if selected_game_name:
         kde = stats.gaussian_kde(scores)
         x_range = np.linspace(0, 10, 100)
         fig = go.Figure()
+
+        # This is the smooth, filled KDE line
         fig.add_trace(go.Scatter(
             x=x_range, y=kde(x_range),
             mode='lines', fill='tozeroy',
             line_shape='spline',
             line=dict(color='#3498db')
         ))
+        
+        # These are the small vertical markers for each individual rating
         fig.add_trace(go.Scatter(
             x=scores, y=[0.005] * len(scores),
             mode='markers',
             marker=dict(symbol='line-ns-open', color='black', size=10),
             name='Individual Ratings'
         ))
+
+        # This update sets the axis range and titles
         fig.update_layout(
             showlegend=False,
             xaxis_title="Score",
             yaxis_title="Density",
-            xaxis=dict(range=[0, 10])
+            xaxis=dict(range=[0, 10]) # This line locks the x-axis from 0 to 10
         )
         st.plotly_chart(fig, use_container_width=True)
         
