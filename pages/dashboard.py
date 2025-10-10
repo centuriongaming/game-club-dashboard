@@ -20,10 +20,13 @@ def load_dashboard_data(_session):
     """
     Runs all expensive queries and calculations for the dashboard at once.
     """
-    # Load each DataFrame directly from the database
+    # --- This is the corrected block ---
+    # It ensures each DataFrame is loaded directly and separately.
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
     games_df = pd.read_sql(sa.select(Game.id, Game.game_name).where(Game.upcoming == False), _session.bind)
     ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
+    # ----------------------------------
+
 
     # --- ADD THIS DEBUGGING BLOCK ---
     st.subheader("--- DEBUG INFO ---")
