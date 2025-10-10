@@ -64,17 +64,6 @@ if selected_game_name:
         st.warning(f"No ratings have been submitted for **{selected_game_name}** yet.")
         st.stop()
 
-Got it. Here's the updated code for the main scorecard that adjusts the layout to your specifications.
-
-The rank is now displayed in a larger, centered font below each gauge, and the delta comparison appears directly below the score inside the dial.
-
-Updated Scorecard Code
-Replace the entire "Main Scorecard" section in your game_details.py file with this new version.
-
-Python
-
-# In pages/game_details.py
-
 # --- Main Scorecard ---
 st.subheader(f"Overall Scorecard for {selected_game_name}")
 with st.container(border=True):
