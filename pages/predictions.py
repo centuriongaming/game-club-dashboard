@@ -104,37 +104,6 @@ def display_model_performance_stats(df):
         tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
 
         with tab1:
-            rated_games_df = df.dropna(subset=['score', 'predicted_score'])
-            if not rated_games_df.empty:
-                mae = mean_absolute_error(rated_games_df['score'], rated_games_df['predicted_score'])
-                rmse = np.sqrt(mean_squared_error(rated_games_df['score'], rated_games_df['predicted_score']))
-                
-                m_col1, m_col2 = st.columns(2)
-                m_col1.metric("Average Score Error", f"{mae:.3f}", help="On average, the model's score predictions are off by this many points.")
-                m_col2.metric("Large Error Penalty", f"{rmse:.3f}", help="This also measures error, but gives a bigger penalty for wildly wrong predictions.")
-            else:
-                st.info("Not enough actual scores available to calculate performance.")
-        
-        with tab2:
-            past_games_df = df[df['upcoming'] == False].copy()
-            y_true = past_games_df['actual_skip']
-            y_prob = past_games_df['predicted_skip_probability'].fillna(0.5).clip(1e-10, 1-1e-10) 
-            
-            loss = log_loss(y_true, y_prob)
-            accuracy = ((y_prob > 0.5) == y_true).mean()
-            
-            m_col1, m_col2 = st.columns(2)
-            m_col1.metric("Prediction Confidence Score", f"{loss:.3f}", help="Measures how 'confident' the model is. Penalizes being very confident about a wrong prediction.")
-            m_col2.metric("Overall 'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
-
-def display_model_performance_stats(df):
-    """Calculates and displays overall model performance metrics."""
-    st.subheader("Overall Model Performance")
-
-    with st.container(border=True):
-        tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
-
-        with tab1:
             # This logic is correct: only evaluate on rows with both a prediction and an actual score.
             rated_games_df = df.dropna(subset=['score', 'predicted_score'])
             if not rated_games_df.empty:
@@ -167,6 +136,26 @@ def display_model_performance_stats(df):
                 m_col2.metric("Overall 'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
             else:
                 st.info("Not enough prediction data available to calculate performance.")
+def display_feature_importance_charts(importances_df, selected_critic):
+    """Displays feature importance bar charts for the selected critic's models."""
+    st.subheader(f"Model Insights for {selected_critic}")
+    st.caption("These charts show the most influential factors in the prediction models for this critic.")
+
+    with st.container(border=True):
+        critic_importances = importances_df[importances_df['critic_name'] == selected_critic]
+        if critic_importances.empty:
+            st.info("No feature importance data is available for this critic.")
+            return
+
+        model_types = critic_importances['model_type'].unique()
+        tab_list = st.tabs([f"{m.replace('_', ' ').title()} Model" for m in model_types])
+
+        for i, model_type in enumerate(model_types):
+            with tab_list[i]:
+                model_df = critic_importances[critic_importances['model_type'] == model_type].sort_values('importance', ascending=False).head(15)
+                fig = px.bar(model_df, x='importance', y='feature', orientation='h', title=f"Top Features for {model_type.replace('_', ' ').title()}")
+                fig.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Importance Score", yaxis_title=None, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig, use_container_width=True)
 
 # --- Main Page ---
 def main():
