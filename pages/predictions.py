@@ -195,12 +195,12 @@ def main():
 
     st.divider()
 
-    if selected__critic:
+    # --- FIX: Corrected the variable name from selected__critic to selected_critic ---
+    if selected_critic:
         display_feature_importance_charts(importances_df, selected_critic)
 
     if st.button("Log out"):
         st.session_state["password_correct"] = False
         st.rerun()
-
 if __name__ == "__main__":
     main()
