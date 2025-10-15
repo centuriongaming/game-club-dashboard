@@ -112,6 +112,7 @@ def display_model_performance_stats(df):
 
         # --- Score Model Stats ---
         with tab1:
+            # This tab is already correctly dropping rows with missing values
             rated_games_df = df.dropna(subset=['score', 'predicted_score'])
             if not rated_games_df.empty:
                 mae = mean_absolute_error(rated_games_df['score'], rated_games_df['predicted_score'])
@@ -134,7 +135,11 @@ def display_model_performance_stats(df):
         # --- Skip Model Stats ---
         with tab2:
             # Filter out upcoming games for a fair assessment of skip accuracy
-            past_games_df = df[df['upcoming'] == False]
+            past_games_df = df[df['upcoming'] == False].copy()
+            
+            # --- FIX: Drop rows where prediction probabilities are missing ---
+            past_games_df.dropna(subset=['predicted_skip_probability'], inplace=True)
+            
             y_true = past_games_df['actual_skip']
             y_prob = past_games_df['predicted_skip_probability'].clip(1e-10, 1-1e-10) 
             
@@ -152,7 +157,6 @@ def display_model_performance_stats(df):
                 f"{accuracy:.2%}", 
                 help="The percentage of times the model correctly predicted whether a critic would skip rating a game or not."
             )
-
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
     st.subheader(f"Model Insights for {selected_critic}")
