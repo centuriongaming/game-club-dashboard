@@ -144,7 +144,7 @@ def display_model_performance_stats(df):
 
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
-    st.subheader(f"Model Insights for {selected_critic}")
+    st.subheader(f"Overall Model Insights for {selected_critic}")
     st.caption("These charts show the most influential factors in the prediction models for this critic.")
 
     with st.container(border=True):
