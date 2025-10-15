@@ -47,8 +47,6 @@ def load_prediction_data(_session):
 
 def display_single_prediction(df, selected_critic, selected_game):
     """Displays the predicted vs. actual outcomes for a single critic/game pair."""
-    st.subheader(f"Prediction Details")
-    
     record = df[(df['critic_name'] == selected_critic) & (df['game_name'] == selected_game)]
     
     if record.empty:
@@ -128,7 +126,6 @@ def display_model_performance_stats(df):
                 m_col1.metric("Prediction Confidence Score", f"{loss:.3f}", help="Measures how 'confident' the model is. Penalizes being very confident about a wrong prediction.")
                 m_col2.metric("Overall 'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
 
-                # --- NEW DEBUGGING EXPANDER ---
                 with st.expander("Show Data Used for Accuracy Calculation"):
                     debug_df = past_games_df[['critic_name', 'game_name', 'score', 'predicted_skip_probability', 'actual_skip']].copy()
                     debug_df['model_prediction_is_skip'] = debug_df['predicted_skip_probability'] > 0.5
@@ -144,7 +141,7 @@ def display_model_performance_stats(df):
 
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
-    st.subheader(f"Overall Model Insights for {selected_critic}")
+    st.subheader(f"Model Insights for {selected_critic}")
     st.caption("These charts show the most influential factors in the prediction models for this critic.")
 
     with st.container(border=True):
@@ -176,31 +173,31 @@ def main():
     if merged_df.empty:
         st.warning("No prediction data found. Page cannot be displayed.")
         st.stop()
-        
-    st.markdown("### Explore a Single Prediction")
-    col1, col2 = st.columns(2)
-    with col1:
-        selected_critic = st.selectbox("Select a Critic", critic_names, index=0)
-    with col2:
-        selected_game = st.selectbox("Select a Game", game_names, index=0)
     
+    # --- Critic Selection ---
+    st.markdown("### Select Critic")
+    selected_critic = st.selectbox("Select a Critic", critic_names, index=0, label_visibility="collapsed")
     st.divider()
 
-    if selected_critic and selected_game:
-        display_single_prediction(merged_df, selected_critic, selected_game)
-    
-    st.divider()
-
+    # --- Overall and Critic-Specific Stats ---
     display_model_performance_stats(merged_df)
-
     st.divider()
 
-    # --- FIX: Corrected the variable name from selected__critic to selected_critic ---
     if selected_critic:
         display_feature_importance_charts(importances_df, selected_critic)
+    st.divider()
 
+    # --- Single Game Prediction ---
+    st.markdown("### Explore a Single Prediction")
+    selected_game = st.selectbox("Select a Game to see its prediction for the critic above", game_names, index=0)
+    
+    if selected_critic and selected_game:
+        display_single_prediction(merged_df, selected_critic, selected_game)
+
+    # --- Logout Button ---
     if st.button("Log out"):
         st.session_state["password_correct"] = False
         st.rerun()
+
 if __name__ == "__main__":
     main()
