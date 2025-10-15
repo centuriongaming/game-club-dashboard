@@ -17,7 +17,7 @@ def load_prediction_data(_session):
     """Loads and merges all data needed for the predictions page."""
     # Base queries
     critics_df = pd.read_sql(sa.select(Critic.id, Critic.critic_name).order_by(Critic.critic_name), _session.bind)
-    games_df = pd.read_sql(sa.select(Game.id, Game.game_name).order_by(Game.game_name), _session.bind)
+    games_df = pd.read_sql(sa.select(Game.id, Game.game_name, Game.upcoming).order_by(Game.game_name), _session.bind)
     predictions_df = pd.read_sql(
         sa.select(CriticPrediction.name.label("game_name"), Critic.critic_name, CriticPrediction.predicted_score, CriticPrediction.predicted_skip_probability)
         .join(Critic, Critic.id == CriticPrediction.critic_id), 
@@ -42,6 +42,14 @@ def load_prediction_data(_session):
         on=['critic_name', 'game_name'],
         how='left'
     )
+    # Add 'upcoming' flag to the main dataframe
+    merged_df = pd.merge(
+        merged_df,
+        games_df[['game_name', 'upcoming']],
+        on='game_name',
+        how='left'
+    )
+    
     # Engineer features for analysis
     merged_df['actual_skip'] = merged_df['score'].isna()
     
@@ -60,33 +68,44 @@ def display_single_prediction(df, selected_critic, selected_game):
         return
         
     record = record.iloc[0]
-    
+
+    # Handle cases where a prediction could not be generated
+    if pd.isna(record['predicted_score']):
+        st.info("This user hasn't rated enough games yet for predictions.")
+        return
+
     with st.container(border=True):
         col1, col2 = st.columns(2)
+        is_upcoming = record['upcoming']
         
         # --- Score Prediction Column ---
         with col1:
             pred_score = record['predicted_score']
-            actual_score = record['score']
-            
             st.metric(label="Predicted Score", value=f"{pred_score:.2f}")
             
-            if pd.notna(actual_score):
-                delta = actual_score - pred_score
-                st.metric(label="Actual Score", value=f"{actual_score:.2f}", delta=f"{delta:.2f} (Actual - Predicted)")
-            else:
-                st.metric(label="Actual Score", value="N/A (Skipped)")
+            # Only show actuals for games that are not upcoming
+            if not is_upcoming:
+                actual_score = record['score']
+                if pd.notna(actual_score):
+                    delta = actual_score - pred_score
+                    st.metric(label="Actual Score", value=f"{actual_score:.2f}", delta=f"{delta:.2f} (Actual - Predicted)")
+                else:
+                    st.metric(label="Actual Score", value="N/A (Skipped)")
 
         # --- Skip Prediction Column ---
         with col2:
             pred_prob = record['predicted_skip_probability']
-            
             st.metric(label="Predicted Skip Likelihood", value=f"{pred_prob*100:.1f}%")
 
-            if record['actual_skip']:
-                st.metric(label="Actual Behavior", value="Skipped")
-            else:
-                st.metric(label="Actual Behavior", value="Did Not Skip")
+            # Only show actuals for games that are not upcoming
+            if not is_upcoming:
+                if record['actual_skip']:
+                    st.metric(label="Actual Behavior", value="Skipped")
+                else:
+                    st.metric(label="Actual Behavior", value="Did Not Skip")
+        
+        if is_upcoming:
+            st.caption("Actual results are not displayed for upcoming games.")
 
 def display_model_performance_stats(df):
     """Calculates and displays overall model performance metrics with simplified explanations."""
@@ -119,7 +138,7 @@ def display_model_performance_stats(df):
         # --- Skip Model Stats ---
         with tab2:
             y_true = df['actual_skip']
-            y_prob = df['predicted_skip_probability'].clip(1e-10, 1-1e-10) # Clip for log loss stability
+            y_prob = df['predicted_skip_probability'].clip(1e-10, 1-1e-10) 
             
             loss = log_loss(y_true, y_prob)
             accuracy = ((y_prob > 0.5) == y_true).mean()
