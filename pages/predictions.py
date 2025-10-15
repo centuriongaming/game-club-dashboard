@@ -69,7 +69,6 @@ def display_single_prediction(df, selected_critic, selected_game):
         col1, col2 = st.columns(2)
         is_upcoming = record['upcoming']
         
-        # --- Score Prediction Column ---
         with col1:
             pred_score = record['predicted_score']
             st.metric(label="Predicted Score", value=f"{pred_score:.2f}")
@@ -82,7 +81,6 @@ def display_single_prediction(df, selected_critic, selected_game):
                 else:
                     st.metric(label="Actual Score", value="N/A (Skipped)")
 
-        # --- Skip Prediction Column ---
         with col2:
             pred_prob = record['predicted_skip_probability']
             st.metric(label="Predicted Skip Likelihood", value=f"{pred_prob*100:.1f}%")
@@ -104,7 +102,6 @@ def display_model_performance_stats(df):
         tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
 
         with tab1:
-            # This logic is correct: only evaluate on rows with both a prediction and an actual score.
             rated_games_df = df.dropna(subset=['score', 'predicted_score'])
             if not rated_games_df.empty:
                 mae = mean_absolute_error(rated_games_df['score'], rated_games_df['predicted_score'])
@@ -117,11 +114,7 @@ def display_model_performance_stats(df):
                 st.info("Not enough actual scores available to calculate performance.")
         
         with tab2:
-            # --- FIX: Apply the same correct logic from the Score Model tab ---
-            # 1. Filter for past games
             past_games_df = df[df['upcoming'] == False].copy()
-            
-            # 2. Drop rows where a prediction is missing to ensure we only evaluate the model's actual performance.
             past_games_df.dropna(subset=['predicted_skip_probability'], inplace=True)
             
             if not past_games_df.empty:
@@ -134,8 +127,21 @@ def display_model_performance_stats(df):
                 m_col1, m_col2 = st.columns(2)
                 m_col1.metric("Prediction Confidence Score", f"{loss:.3f}", help="Measures how 'confident' the model is. Penalizes being very confident about a wrong prediction.")
                 m_col2.metric("Overall 'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
+
+                # --- NEW DEBUGGING EXPANDER ---
+                with st.expander("Show Data Used for Accuracy Calculation"):
+                    debug_df = past_games_df[['critic_name', 'game_name', 'score', 'predicted_skip_probability', 'actual_skip']].copy()
+                    debug_df['model_prediction_is_skip'] = debug_df['predicted_skip_probability'] > 0.5
+                    debug_df['prediction_is_correct'] = debug_df['model_prediction_is_skip'] == debug_df['actual_skip']
+                    st.dataframe(debug_df, use_container_width=True)
+                    
+                    if debug_df['prediction_is_correct'].all():
+                        st.success("Analysis: The dataframe confirms that the model's prediction was correct for every single row, resulting in 100% accuracy. This suggests the issue may be in the source data.")
+                    else:
+                        st.warning("Analysis: The dataframe shows incorrect predictions, so the accuracy should not be 100%. Please report this as a bug.")
             else:
                 st.info("Not enough prediction data available to calculate performance.")
+
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
     st.subheader(f"Model Insights for {selected_critic}")
@@ -189,7 +195,7 @@ def main():
 
     st.divider()
 
-    if selected_critic:
+    if selected__critic:
         display_feature_importance_charts(importances_df, selected_critic)
 
     if st.button("Log out"):
