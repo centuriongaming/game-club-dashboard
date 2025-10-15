@@ -35,20 +35,16 @@ def load_prediction_data(_session):
         _session.bind
     )
 
-    # Merge predictions with actual ratings
-    merged_df = pd.merge(
-        predictions_df,
-        ratings_df,
-        on=['critic_name', 'game_name'],
-        how='left'
-    )
-    # Add 'upcoming' flag to the main dataframe
-    merged_df = pd.merge(
-        merged_df,
-        games_df[['game_name', 'upcoming']],
-        on='game_name',
-        how='left'
-    )
+    # Create a scaffold of all possible critic-game combinations to ensure data integrity
+    scaffold_df = pd.MultiIndex.from_product(
+        [critics_df['critic_name'], games_df['game_name']],
+        names=['critic_name', 'game_name']
+    ).to_frame(index=False)
+
+    # Join the scaffold with all other data sources
+    merged_df = pd.merge(scaffold_df, games_df[['game_name', 'upcoming']], on='game_name', how='left')
+    merged_df = pd.merge(merged_df, predictions_df, on=['critic_name', 'game_name'], how='left')
+    merged_df = pd.merge(merged_df, ratings_df, on=['critic_name', 'game_name'], how='left')
     
     # Engineer features for analysis
     merged_df['actual_skip'] = merged_df['score'].isna()
@@ -137,8 +133,10 @@ def display_model_performance_stats(df):
         
         # --- Skip Model Stats ---
         with tab2:
-            y_true = df['actual_skip']
-            y_prob = df['predicted_skip_probability'].clip(1e-10, 1-1e-10) 
+            # Filter out upcoming games for a fair assessment of skip accuracy
+            past_games_df = df[df['upcoming'] == False]
+            y_true = past_games_df['actual_skip']
+            y_prob = past_games_df['predicted_skip_probability'].clip(1e-10, 1-1e-10) 
             
             loss = log_loss(y_true, y_prob)
             accuracy = ((y_prob > 0.5) == y_true).mean()
