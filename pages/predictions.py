@@ -65,9 +65,12 @@ def display_single_prediction(df, selected_critic, selected_game):
         
     record = record.iloc[0]
 
-    # Handle cases where a prediction could not be generated
+    # --- FIX: Differentiate between missing predictions for past vs. upcoming games ---
     if pd.isna(record['predicted_score']):
-        st.info("This user hasn't rated enough games yet for predictions.")
+        if not record['upcoming']:
+            st.info("This user hasn't rated enough games yet for predictions.")
+        else:
+            st.info("A prediction for this upcoming game is not yet available.")
         return
 
     with st.container(border=True):
