@@ -56,7 +56,7 @@ def display_single_prediction(df, selected_critic, selected_game):
     record = df[(df['critic_name'] == selected_critic) & (df['game_name'] == selected_game)]
     
     if record.empty:
-        st.warning("No prediction is available for this combination.", icon="⚠️")
+        st.warning("No prediction is available for this combination.")
         return
         
     record = record.iloc[0]
@@ -84,16 +84,16 @@ def display_single_prediction(df, selected_critic, selected_game):
             st.metric(label="Predicted Skip Likelihood", value=f"{pred_prob*100:.1f}%")
 
             if record['actual_skip']:
-                st.metric(label="Actual Behavior", value="Skipped ✅")
+                st.metric(label="Actual Behavior", value="Skipped")
             else:
-                st.metric(label="Actual Behavior", value="Did Not Skip ❌")
+                st.metric(label="Actual Behavior", value="Did Not Skip")
 
 def display_model_performance_stats(df):
-    """Calculates and displays overall model performance metrics."""
+    """Calculates and displays overall model performance metrics with simplified explanations."""
     st.subheader("Overall Model Performance")
 
     with st.container(border=True):
-        tab1, tab2 = st.tabs(["Score Prediction (Regression)", "Skip Prediction (Classification)"])
+        tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
 
         # --- Score Model Stats ---
         with tab1:
@@ -103,8 +103,16 @@ def display_model_performance_stats(df):
                 rmse = np.sqrt(mean_squared_error(rated_games_df['score'], rated_games_df['predicted_score']))
                 
                 m_col1, m_col2 = st.columns(2)
-                m_col1.metric("Mean Absolute Error (MAE)", f"{mae:.3f}", help="The average absolute difference between predicted and actual scores. Lower is better.")
-                m_col2.metric("Root Mean Squared Error (RMSE)", f"{rmse:.3f}", help="Similar to MAE, but penalizes large errors more heavily. Lower is better.")
+                m_col1.metric(
+                    "Average Score Error", 
+                    f"{mae:.3f}", 
+                    help="On average, the model's score predictions are off by this many points. A smaller number means the model is more accurate."
+                )
+                m_col2.metric(
+                    "Large Error Penalty", 
+                    f"{rmse:.3f}", 
+                    help="This also measures error, but it gives a much bigger penalty for predictions that were wildly wrong. A smaller number is better."
+                )
             else:
                 st.info("Not enough actual scores available to calculate performance.")
         
@@ -117,9 +125,16 @@ def display_model_performance_stats(df):
             accuracy = ((y_prob > 0.5) == y_true).mean()
             
             m_col1, m_col2 = st.columns(2)
-            m_col1.metric("Log Loss", f"{loss:.3f}", help="Measures the performance of a probabilistic classifier. Lower is better.")
-            m_col2.metric("Accuracy (at 50% threshold)", f"{accuracy:.2%}", help="The percentage of skip/don't skip predictions that were correct.")
-
+            m_col1.metric(
+                "Prediction Confidence Score", 
+                f"{loss:.3f}", 
+                help="This measures how 'confident' the skip prediction model is. It heavily penalizes the model for being very confident about a wrong prediction. A smaller number means the model is better calibrated."
+            )
+            m_col2.metric(
+                "Overall 'Skip vs. Rate' Accuracy", 
+                f"{accuracy:.2%}", 
+                help="The percentage of times the model correctly predicted whether a critic would skip rating a game or not."
+            )
 
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
@@ -139,7 +154,7 @@ def display_feature_importance_charts(importances_df, selected_critic):
         for i, model_type in enumerate(model_types):
             with tab_list[i]:
                 model_df = critic_importances[critic_importances['model_type'] == model_type].sort_values('importance', ascending=False).head(15)
-                fig = px.bar(model_df, x='importance', y='feature', orientation='h', title=f"Top Features for {model_type.replace('_', ' ').title()} Prediction")
+                fig = px.bar(model_df, x='importance', y='feature', orientation='h', title=f"Top Features for {model_type.replace('_', ' ').title()}")
                 fig.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Importance Score", yaxis_title=None, margin=dict(l=10, r=10, t=40, b=10))
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -149,7 +164,7 @@ def main():
     check_auth()
     session = get_sqla_session()
     
-    st.title("🤖 Predictive Analytics")
+    st.title("Predictive Analytics")
 
     critic_names, game_names, merged_df, importances_df = load_prediction_data(session)
 
