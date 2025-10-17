@@ -108,6 +108,13 @@ def display_model_performance_stats(df):
                 m_col1, m_col2 = st.columns(2)
                 m_col1.metric("Average Score Error", f"{mae:.3f}", help="On average, the model's score predictions are off by this many points.")
                 m_col2.metric("Large Error Penalty", f"{rmse:.3f}", help="This also measures error, but it gives a bigger penalty for wildly wrong predictions.")
+
+                with st.expander("Show Data Used for Error Calculation"):
+                    debug_df = rated_games_df[['critic_name', 'game_name', 'score', 'predicted_score']].copy()
+                    debug_df['absolute_error'] = (debug_df['predicted_score'] - debug_df['score']).abs()
+                    st.dataframe(debug_df, use_container_width=True)
+                    st.info(f"Analysis: The 'Average Score Error' (MAE) is calculated by taking the average of the `absolute_error` column. The current average is {debug_df['absolute_error'].mean():.3f}, which matches the metric displayed.")
+
             else:
                 st.info("Not enough actual scores available to calculate performance.")
         
