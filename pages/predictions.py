@@ -92,15 +92,18 @@ def display_single_prediction(df, selected_critic, selected_game):
         if is_upcoming:
             st.caption("Actual results are not displayed for upcoming games.")
 
-def display_model_performance_stats(df):
-    """Calculates and displays overall model performance metrics."""
-    st.subheader("Overall Model Performance")
+def display_model_performance_stats(df, selected_critic):
+    """Calculates and displays model performance metrics for the selected critic."""
+    st.subheader(f"Model Performance for {selected_critic}")
 
     with st.container(border=True):
         tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
 
+        # Filter data for the selected critic
+        critic_df = df[df['critic_name'] == selected_critic].copy()
+
         with tab1:
-            rated_games_df = df.dropna(subset=['score', 'predicted_score'])
+            rated_games_df = critic_df.dropna(subset=['score', 'predicted_score'])
             if not rated_games_df.empty:
                 mae = mean_absolute_error(rated_games_df['score'], rated_games_df['predicted_score'])
                 rmse = np.sqrt(mean_squared_error(rated_games_df['score'], rated_games_df['predicted_score']))
@@ -109,17 +112,18 @@ def display_model_performance_stats(df):
                 m_col1.metric("Average Score Error", f"{mae:.3f}", help="On average, the model's score predictions are off by this many points.")
                 m_col2.metric("Large Error Penalty", f"{rmse:.3f}", help="This also measures error, but it gives a bigger penalty for wildly wrong predictions.")
 
-                with st.expander("Show Data Used for Error Calculation"):
-                    debug_df = rated_games_df[['critic_name', 'game_name', 'score', 'predicted_score']].copy()
+                with st.expander("Show Data and Calculation"):
+                    debug_df = rated_games_df[['game_name', 'score', 'predicted_score']].copy()
                     debug_df['absolute_error'] = (debug_df['predicted_score'] - debug_df['score']).abs()
+                    
+                    st.markdown(f"**Calculation:** $$ \\frac{{\\sum |\\text{{actual}} - \\text{{predicted}} |}}{{\\text{{count}}}} = \\frac{{{debug_df['absolute_error'].sum():.2f}}}{{{len(debug_df)}}} = {mae:.3f} $$")
                     st.dataframe(debug_df, use_container_width=True)
-                    st.info(f"Analysis: The 'Average Score Error' (MAE) is calculated by taking the average of the `absolute_error` column. The current average is {debug_df['absolute_error'].mean():.3f}, which matches the metric displayed.")
 
             else:
-                st.info("Not enough actual scores available to calculate performance.")
+                st.info(f"Not enough rated games with predictions for {selected_critic} to calculate score model performance.")
         
         with tab2:
-            past_games_df = df[df['upcoming'] == False].copy()
+            past_games_df = critic_df[critic_df['upcoming'] == False].copy()
             past_games_df.dropna(subset=['predicted_skip_probability'], inplace=True)
             
             if not past_games_df.empty:
@@ -131,20 +135,17 @@ def display_model_performance_stats(df):
                 
                 m_col1, m_col2 = st.columns(2)
                 m_col1.metric("Prediction Confidence Score", f"{loss:.3f}", help="Measures how 'confident' the model is. Penalizes being very confident about a wrong prediction.")
-                m_col2.metric("Overall 'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
+                m_col2.metric("'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
 
-                with st.expander("Show Data Used for Accuracy Calculation"):
-                    debug_df = past_games_df[['critic_name', 'game_name', 'score', 'predicted_skip_probability', 'actual_skip']].copy()
+                with st.expander("Show Data and Calculation"):
+                    debug_df = past_games_df[['game_name', 'score', 'predicted_skip_probability', 'actual_skip']].copy()
                     debug_df['model_prediction_is_skip'] = debug_df['predicted_skip_probability'] > 0.5
                     debug_df['prediction_is_correct'] = debug_df['model_prediction_is_skip'] == debug_df['actual_skip']
+
+                    st.markdown(f"**Calculation:** $$ \\frac{{\\text{{Correct Predictions}}}}{{\\text{{Total Predictions}}}} = \\frac{{{debug_df['prediction_is_correct'].sum()}}}{{{len(debug_df)}}} = {accuracy:.2%} $$")
                     st.dataframe(debug_df, use_container_width=True)
-                    
-                    if debug_df['prediction_is_correct'].all():
-                        st.success("Analysis: The dataframe confirms that the model's prediction was correct for every single row, resulting in 100% accuracy. This suggests the issue may be in the source data.")
-                    else:
-                        st.warning("Analysis: The dataframe shows incorrect predictions, so the accuracy should not be 100%. Please report this as a bug.")
             else:
-                st.info("Not enough prediction data available to calculate performance.")
+                st.info(f"Not enough past games with predictions for {selected_critic} to calculate skip model performance.")
 
 def display_feature_importance_charts(importances_df, selected_critic):
     """Displays feature importance bar charts for the selected critic's models."""
@@ -187,16 +188,16 @@ def main():
     st.divider()
 
     # --- Overall and Critic-Specific Stats ---
-    display_model_performance_stats(merged_df)
-    st.divider()
-
     if selected_critic:
+        display_model_performance_stats(merged_df, selected_critic)
+        st.divider()
         display_feature_importance_charts(importances_df, selected_critic)
-    st.divider()
+        st.divider()
 
     # --- Single Game Prediction ---
     st.markdown("### Explore a Single Prediction")
-    selected_game = st.selectbox("Select a Game to see its prediction for the critic above", game_names, index=0)
+    st.caption(f"Showing predictions for **{selected_critic}**.")
+    selected_game = st.selectbox("Select a Game", game_names, index=0)
     
     if selected_critic and selected_game:
         display_single_prediction(merged_df, selected_critic, selected_game)
