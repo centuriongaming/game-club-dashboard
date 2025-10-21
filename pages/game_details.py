@@ -163,25 +163,69 @@ def display_ranking_breakdown(game_info, critics_df, skipper_ids):
 
 def display_score_distribution(game_ratings_with_critics):
     """Displays the score distribution plot and highest/lowest score info."""
-    if len(game_ratings_with_critics) > 1:
-        scores = game_ratings_with_critics['score']
+    
+    scores = game_ratings_with_critics['score']
+    
+    # --- UPDATED LOGIC ---
+    
+    # Case 1: More than 1 score AND they are not all identical
+    if len(scores) > 1 and scores.nunique() > 1:
         kde = stats.gaussian_kde(scores)
         x_range = np.linspace(0, 10, 100)
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=x_range, y=kde(x_range), mode='lines', fill='tozeroy', line_shape='spline', line=dict(color='#3498db')))
-        fig.add_trace(go.Scatter(x=scores, y=[0.005] * len(scores), mode='markers', marker=dict(symbol='line-ns-open', color='black', size=10), name='Individual Ratings'))
-        fig.update_layout(showlegend=False, xaxis_title="Score", yaxis_title="Density", xaxis=dict(range=[0, 10]))
+        # Add the KDE density plot
+        fig.add_trace(go.Scatter(
+            x=x_range, y=kde(x_range), 
+            mode='lines', fill='tozeroy', 
+            line_shape='spline', line=dict(color='#3498db')
+        ))
+        # Add the "rug plot" for individual ratings
+        fig.add_trace(go.Scatter(
+            x=scores, y=[0.005] * len(scores), 
+            mode='markers', marker=dict(symbol='line-ns-open', color='black', size=10), 
+            name='Individual Ratings'
+        ))
+        fig.update_layout(
+            showlegend=False, 
+            xaxis_title="Score", 
+            yaxis_title="Density", 
+            xaxis=dict(range=[0, 10])
+        )
         st.plotly_chart(fig, use_container_width=True)
+
+    # Case 2: More than 1 score, but they ARE all identical
+    elif len(scores) > 1:
+        st.info("A score distribution plot cannot be generated because all ratings are identical.")
+        # Fallback: Just show the rug plot
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=scores, y=[0.005] * len(scores), 
+            mode='markers', marker=dict(symbol='line-ns-open', color='black', size=10), 
+            name='Individual Ratings'
+        ))
+        # Set a fixed y-axis range since there's no density
+        fig.update_layout(
+            showlegend=False, 
+            xaxis_title="Score", 
+            yaxis_title="", 
+            xaxis=dict(range=[0, 10]), 
+            yaxis=dict(range=[0, 0.1], showticklabels=False) 
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Case 3: Fewer than two ratings
     else:
         st.info("A score distribution plot cannot be generated with fewer than two ratings.")
 
+    # --- This part remains the same and works for all cases ---
     highest = game_ratings_with_critics.loc[game_ratings_with_critics['score'].idxmax()]
     lowest = game_ratings_with_critics.loc[game_ratings_with_critics['score'].idxmin()]
     
     tcol1, tcol2 = st.columns(2)
     tcol1.info(f"**Highest Score:** {highest['score']:.1f} by {highest['critic_name']}")
     tcol2.error(f"**Lowest Score:** {lowest['score']:.1f} by {lowest['critic_name']}")
+
 
 def display_critic_ratings(game_ratings_with_critics, global_std_dev):
     """Displays the detailed table of critic ratings vs. their average."""

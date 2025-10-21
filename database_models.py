@@ -77,3 +77,12 @@ class CriticFeatureImportance(Base):
     
     # Relationship
     critic = relationship("Critic", back_populates="feature_importances")
+
+class CriticPredictionExplanation(Base):
+    """Stores the pre-computed SHAP values for each prediction."""
+    __tablename__ = 'critic_prediction_explanations'
+    critic_id = Column(BigInteger, ForeignKey('critics.id'), primary_key=True)
+    game_id = Column(BigInteger, ForeignKey('games.id'), primary_key=True)
+    model_type = Column(Text, primary_key=True)
+    base_value = Column(Float)
+    shap_values = Column(Text) # Stored as a JSON string
