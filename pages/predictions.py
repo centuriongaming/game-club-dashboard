@@ -4,208 +4,249 @@ import pandas as pd
 import numpy as np
 import sqlalchemy as sa
 import plotly.express as px
-from sklearn.metrics import mean_absolute_error, mean_squared_error, log_loss
+import json
+import ast
+from datetime import datetime
 from utils import check_auth, get_sqla_session
-from database_models import Critic, Game, Rating, CriticPrediction, CriticFeatureImportance
+from database_models import Critic, Game, Rating, CriticPrediction, CriticFeatureImportance, GameDetails
 
-# --- Page & Data Configuration ---
+# --- Page Configuration ---
 st.set_page_config(page_title="Predictions", layout="wide")
+
+# --- Feature Engineering Helpers (Must match master_updater.py) ---
+def clean_tags(val):
+    tags = []
+    if isinstance(val, list): tags = val
+    elif isinstance(val, str):
+        try:
+            if val.strip().startswith('['): tags = json.loads(val)
+            else: tags = ast.literal_eval(val)
+        except: tags = []
+    return [str(t).strip().replace(' ', '_').replace('-', '_') for t in tags if isinstance(tags, list)]
+
+def bin_price(price):
+    if pd.isna(price): return "Price_Unknown"
+    if price == 0: return "Price_Free"
+    if price < 15: return "Price_$0.01-$14.99"
+    if price < 30: return "Price_$15.00-$29.99"
+    if price < 50: return "Price_$30.00-$49.99"
+    return "Price_$50.00+"
+
+def bin_release_date_dynamic(release_date_str):
+    if pd.isna(release_date_str) or release_date_str == 'N/A': return "Age_Unknown"
+    try:
+        dt = pd.to_datetime(release_date_str, format='mixed')
+        age_days = (datetime.now() - dt).days
+        years = age_days / 365.25
+        if years < 1: return "Age_<1y"
+        if years < 3: return "Age_1-3y"
+        if years < 5: return "Age_3-5y"
+        if years < 10: return "Age_5-10y"
+        return "Age_10y+"
+    except: return "Age_Unknown"
+
+def get_game_features(row):
+    """Reconstructs the feature list for a single game row."""
+    features = []
+    # Tags
+    tags = clean_tags(row.get('user_tags'))
+    features.extend([f"tag__{t}" for t in tags])
+    # Price
+    features.append(f"bin__{bin_price(row.get('price_usd'))}")
+    # Age
+    features.append(f"bin__{bin_release_date_dynamic(row.get('release_date'))}")
+    return features
 
 # --- Data Loading ---
 @st.cache_data
 def load_prediction_data(_session):
-    """Loads and merges all data needed for the predictions page using IDs for robust joins."""
-    # Base queries - Fetching with IDs
+    """Loads critics, games, details, predictions, and affinities."""
+    # 1. Base Tables
     critics_df = pd.read_sql(sa.select(Critic.id.label('critic_id'), Critic.critic_name).order_by(Critic.critic_name), _session.bind)
-    games_df = pd.read_sql(sa.select(Game.id.label('game_id'), Game.game_name, Game.upcoming).order_by(Game.game_name), _session.bind)
+    
+    # Join Game + GameDetails to get metadata needed for features
+    games_query = sa.select(
+        Game.id.label('game_id'), 
+        Game.game_name, 
+        Game.upcoming,
+        GameDetails.price_usd,
+        GameDetails.release_date,
+        GameDetails.user_tags
+    ).join(GameDetails, Game.id == GameDetails.id, isouter=True).order_by(Game.game_name)
+    
+    games_df = pd.read_sql(games_query, _session.bind)
+    
     predictions_df = pd.read_sql(sa.select(CriticPrediction.critic_id, CriticPrediction.id.label('game_id'), CriticPrediction.predicted_score, CriticPrediction.predicted_skip_probability), _session.bind)
     ratings_df = pd.read_sql(sa.select(Rating.critic_id, Rating.game_id, Rating.score), _session.bind)
+    
+    # Fetch Affinities (CriticFeatureImportance)
+    # We filter for 'relative_affinity' as that is our new main model type
     importances_df = pd.read_sql(
         sa.select(CriticFeatureImportance.feature, CriticFeatureImportance.importance, Critic.critic_name, CriticFeatureImportance.model_type)
-        .join(Critic, Critic.id == CriticFeatureImportance.critic_id),
+        .join(Critic, Critic.id == CriticFeatureImportance.critic_id)
+        .where(CriticFeatureImportance.model_type == 'relative_affinity'),
         _session.bind
     )
 
-    # Create a scaffold of all possible critic_id-game_id combinations
+    # 2. Merge Prediction Data
     scaffold_df = pd.MultiIndex.from_product(
         [critics_df['critic_id'], games_df['game_id']],
         names=['critic_id', 'game_id']
     ).to_frame(index=False)
 
-    # Merge all data onto the scaffold using IDs
     merged_df = pd.merge(scaffold_df, critics_df, on='critic_id', how='left')
     merged_df = pd.merge(merged_df, games_df, on='game_id', how='left')
     merged_df = pd.merge(merged_df, predictions_df, on=['critic_id', 'game_id'], how='left')
     merged_df = pd.merge(merged_df, ratings_df, on=['critic_id', 'game_id'], how='left')
-    
-    # Engineer features for analysis
     merged_df['actual_skip'] = merged_df['score'].isna()
     
-    return critics_df['critic_name'].tolist(), games_df['game_name'].tolist(), merged_df, importances_df
+    return critics_df['critic_name'].tolist(), games_df, merged_df, importances_df
 
-# --- UI Component Functions ---
+# --- Visualization Components ---
 
-def display_single_prediction(df, selected_critic, selected_game):
-    """Displays the predicted vs. actual outcomes for a single critic/game pair."""
-    record = df[(df['critic_name'] == selected_critic) & (df['game_name'] == selected_game)]
+def display_critic_profile(importances_df, selected_critic):
+    """Displays Price, Age, and Tag affinities."""
+    st.subheader(f"Affinity Profile: {selected_critic}")
     
-    if record.empty:
-        st.warning("No prediction is available for this combination.")
+    critic_data = importances_df[importances_df['critic_name'] == selected_critic].copy()
+    if critic_data.empty:
+        st.info("No affinity profile data found.")
         return
-        
+
+    # Helper to plot nicely
+    def plot_affinity_bar(data, x_col, y_col, title, color_discrete_sequence=None, category_orders=None):
+        fig = px.bar(data, x=x_col, y=y_col, title=title, text_auto='.2f', color=y_col, 
+                     color_continuous_scale=px.colors.diverging.RdBu)
+        fig.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Relative Affinity (Higher = Better)")
+        if category_orders:
+            fig.update_xaxes(categoryorder='array', categoryarray=category_orders)
+        return fig
+
+    # 1. Price Sensitivity
+    price_df = critic_data[critic_data['feature'].str.startswith('bin__Price')].copy()
+    price_df['Label'] = price_df['feature'].str.replace('bin__Price_', '').str.replace('_', ' ')
+    # Define logical sort order
+    price_order = ["Free", "$0.01-$14.99", "$15.00-$29.99", "$30.00-$49.99", "$50.00+"]
+    
+    # 2. Age Sensitivity
+    age_df = critic_data[critic_data['feature'].str.startswith('bin__Age')].copy()
+    age_df['Label'] = age_df['feature'].str.replace('bin__Age_', '').str.replace('_', ' ')
+    age_order = ["<1y", "1-3y", "3-5y", "5-10y", "10y+"]
+
+    # 3. Tags (Top/Bottom)
+    tag_df = critic_data[critic_data['feature'].str.startswith('tag__')].copy()
+    tag_df['Label'] = tag_df['feature'].str.replace('tag__', '')
+    tag_df = tag_df.sort_values('importance', ascending=False)
+    
+    top_5 = tag_df.head(5)
+    bottom_5 = tag_df.tail(5).sort_values('importance', ascending=True) # Sort to show most negative first
+
+    # Render Layout
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(plot_affinity_bar(price_df, 'Label', 'importance', "Price Sensitivity", category_orders=price_order), use_container_width=True)
+    with col2:
+        st.plotly_chart(plot_affinity_bar(age_df, 'Label', 'importance', "Age Preference", category_orders=age_order), use_container_width=True)
+
+    col3, col4 = st.columns(2)
+    with col3:
+        fig_top = px.bar(top_5, x='importance', y='Label', orientation='h', title="Top 5 Loved Tags", text_auto='.2f')
+        fig_top.update_traces(marker_color='#2E8B57') # SeaGreen
+        fig_top.update_layout(yaxis={'categoryorder':'total ascending'})
+        st.plotly_chart(fig_top, use_container_width=True)
+    with col4:
+        fig_bot = px.bar(bottom_5, x='importance', y='Label', orientation='h', title="Top 5 Disliked Tags", text_auto='.2f')
+        fig_bot.update_traces(marker_color='#CD5C5C') # IndianRed
+        fig_bot.update_layout(yaxis={'categoryorder':'total descending'})
+        st.plotly_chart(fig_bot, use_container_width=True)
+
+
+def display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game):
+    """Shows the prediction result AND the factors that drove it."""
+    
+    # 1. Get Prediction Record
+    record = merged_df[(merged_df['critic_name'] == selected_critic) & (merged_df['game_name'] == selected_game)]
+    if record.empty:
+        st.warning("No data.")
+        return
     record = record.iloc[0]
 
-    # Differentiate between missing predictions for past vs. upcoming games
-    if pd.isna(record['predicted_score']):
-        if not record['upcoming']:
-            st.info("This user hasn't rated enough games yet for predictions.")
-        else:
-            st.info("A prediction for this upcoming game is not yet available.")
-        return
+    # 2. Get Game Metadata & Features
+    game_meta = games_df[games_df['game_name'] == selected_game].iloc[0]
+    # Re-calculate features on the fly using the helper functions
+    game_features = get_game_features(game_meta)
 
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        is_upcoming = record['upcoming']
+    # 3. Get Critic Profile
+    critic_profile = importances_df[importances_df['critic_name'] == selected_critic]
+    
+    # 4. Match Features
+    # Create a DataFrame of the features IN THIS GAME and the critic's affinity for them
+    contributions = []
+    for f in game_features:
+        # Find affinity in critic profile
+        match = critic_profile[critic_profile['feature'] == f]
+        affinity = match.iloc[0]['importance'] if not match.empty else 0.0 # Default to neutral if missing
         
-        with col1:
-            pred_score = record['predicted_score']
-            st.metric(label="Predicted Score", value=f"{pred_score:.2f}")
-            
-            if not is_upcoming:
-                actual_score = record['score']
-                if pd.notna(actual_score):
-                    delta = actual_score - pred_score
-                    st.metric(label="Actual Score", value=f"{actual_score:.2f}", delta=f"{delta:.2f} (Actual - Predicted)")
-                else:
-                    st.metric(label="Actual Score", value="N/A (Skipped)")
+        # formatting for display
+        clean_name = f.replace('tag__', 'Tag: ').replace('bin__', '')
+        contributions.append({'Feature': clean_name, 'Impact': affinity})
+    
+    contrib_df = pd.DataFrame(contributions).sort_values('Impact', ascending=False)
 
-        with col2:
-            pred_prob = record['predicted_skip_probability']
-            st.metric(label="Predicted Skip Likelihood", value=f"{pred_prob*100:.1f}%")
-
-            if not is_upcoming:
-                if record['actual_skip']:
-                    st.metric(label="Actual Behavior", value="Skipped")
-                else:
-                    st.metric(label="Actual Behavior", value="Did Not Skip")
-        
-        if is_upcoming:
-            st.caption("Actual results are not displayed for upcoming games.")
-
-def display_model_performance_stats(df, selected_critic):
-    """Calculates and displays model performance metrics for the selected critic."""
-    st.subheader(f"Model Performance for {selected_critic}")
-
+    # --- Render UI ---
+    st.markdown(f"### Prediction Analysis: {selected_game}")
+    
+    # Top Row: The Numbers
     with st.container(border=True):
-        tab1, tab2 = st.tabs(["Score Prediction Model", "Skip Prediction Model"])
-
-        # Filter data for the selected critic
-        critic_df = df[df['critic_name'] == selected_critic].copy()
-
-        with tab1:
-            rated_games_df = critic_df.dropna(subset=['score', 'predicted_score'])
-            if not rated_games_df.empty:
-                mae = mean_absolute_error(rated_games_df['score'], rated_games_df['predicted_score'])
-                rmse = np.sqrt(mean_squared_error(rated_games_df['score'], rated_games_df['predicted_score']))
-                
-                m_col1, m_col2 = st.columns(2)
-                m_col1.metric("Average Score Error", f"{mae:.3f}", help="On average, the model's score predictions are off by this many points.")
-                m_col2.metric("Large Error Penalty", f"{rmse:.3f}", help="This also measures error, but it gives a bigger penalty for wildly wrong predictions.")
-
-                with st.expander("Show Data and Calculation"):
-                    debug_df = rated_games_df[['game_name', 'score', 'predicted_score']].copy()
-                    debug_df['absolute_error'] = (debug_df['predicted_score'] - debug_df['score']).abs()
-                    
-                    st.markdown(f"**Calculation:** $$ \\frac{{\\sum |\\text{{actual}} - \\text{{predicted}} |}}{{\\text{{count}}}} = \\frac{{{debug_df['absolute_error'].sum():.2f}}}{{{len(debug_df)}}} = {mae:.3f} $$")
-                    st.dataframe(debug_df, use_container_width=True)
-
-            else:
-                st.info(f"Not enough rated games with predictions for {selected_critic} to calculate score model performance.")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Predicted Score", f"{record['predicted_score']:.2f}" if pd.notna(record['predicted_score']) else "N/A")
+        c2.metric("Skip Probability", f"{record['predicted_skip_probability']*100:.1f}%" if pd.notna(record['predicted_skip_probability']) else "N/A")
         
-        with tab2:
-            past_games_df = critic_df[critic_df['upcoming'] == False].copy()
-            past_games_df.dropna(subset=['predicted_skip_probability'], inplace=True)
-            
-            if not past_games_df.empty:
-                y_true = past_games_df['actual_skip']
-                y_prob = past_games_df['predicted_skip_probability'].clip(1e-10, 1-1e-10) 
-                
-                loss = log_loss(y_true, y_prob)
-                accuracy = ((y_prob > 0.5) == y_true).mean()
-                
-                m_col1, m_col2 = st.columns(2)
-                m_col1.metric("Prediction Confidence Score", f"{loss:.3f}", help="Measures how 'confident' the model is. Penalizes being very confident about a wrong prediction.")
-                m_col2.metric("'Skip vs. Rate' Accuracy", f"{accuracy:.2%}", help="The percentage of times the model correctly predicted whether a critic would skip a game.")
+        actual_val = f"{record['score']:.1f}" if pd.notna(record['score']) else ("Skipped" if record['actual_skip'] else "Pending")
+        c3.metric("Actual Outcome", actual_val)
 
-                with st.expander("Show Data and Calculation"):
-                    debug_df = past_games_df[['game_name', 'score', 'predicted_skip_probability', 'actual_skip']].copy()
-                    debug_df['model_prediction_is_skip'] = debug_df['predicted_skip_probability'] > 0.5
-                    debug_df['prediction_is_correct'] = debug_df['model_prediction_is_skip'] == debug_df['actual_skip']
+    # Bottom Row: The "Why"
+    st.markdown("#### What drove this prediction?")
+    st.caption("These are the specific features of this game and how much this critic likes/dislikes them relative to the average.")
+    
+    if not contrib_df.empty:
+        # Color code: Green for positive, Red for negative
+        fig = px.bar(contrib_df, x='Impact', y='Feature', orientation='h', 
+                     color='Impact', color_continuous_scale=px.colors.diverging.RdBu,
+                     text_auto='.2f')
+        fig.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No feature data available for this game.")
 
-                    st.markdown(f"**Calculation:** $$ \\frac{{\\text{{Correct Predictions}}}}{{\\text{{Total Predictions}}}} = \\frac{{{debug_df['prediction_is_correct'].sum()}}}{{{len(debug_df)}}} = {accuracy:.2%} $$")
-                    st.dataframe(debug_df, use_container_width=True)
-            else:
-                st.info(f"Not enough past games with predictions for {selected_critic} to calculate skip model performance.")
-
-def display_feature_importance_charts(importances_df, selected_critic):
-    """Displays feature importance bar charts for the selected critic's models."""
-    st.subheader(f"Model Insights for {selected_critic}")
-    st.caption("These charts show the most influential factors in the prediction models for this critic.")
-
-    with st.container(border=True):
-        critic_importances = importances_df[importances_df['critic_name'] == selected_critic]
-        if critic_importances.empty:
-            st.info("No feature importance data is available for this critic.")
-            return
-
-        model_types = critic_importances['model_type'].unique()
-        tab_list = st.tabs([f"{m.replace('_', ' ').title()} Model" for m in model_types])
-
-        for i, model_type in enumerate(model_types):
-            with tab_list[i]:
-                model_df = critic_importances[critic_importances['model_type'] == model_type].sort_values('importance', ascending=False).head(15)
-                fig = px.bar(model_df, x='importance', y='feature', orientation='h', title=f"Top Features for {model_type.replace('_', ' ').title()}")
-                fig.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Importance Score", yaxis_title=None, margin=dict(l=10, r=10, t=40, b=10))
-                st.plotly_chart(fig, use_container_width=True)
-
-# --- Main Page ---
+# --- Main ---
 def main():
-    """Renders the main predictions page."""
     check_auth()
     session = get_sqla_session()
     
-    st.title("Predictive Analytics")
-
-    critic_names, game_names, merged_df, importances_df = load_prediction_data(session)
+    critic_names, games_df, merged_df, importances_df = load_prediction_data(session)
+    game_names = games_df['game_name'].tolist()
 
     if merged_df.empty:
-        st.warning("No prediction data found. Page cannot be displayed.")
+        st.error("No data available.")
         st.stop()
+
+    # Sidebar / Selection
+    with st.sidebar:
+        st.header("Settings")
+        selected_critic = st.selectbox("Critic", critic_names)
+        selected_game = st.selectbox("Game Analysis", game_names)
     
-    # --- Critic Selection ---
-    st.markdown("### Select Critic")
-    selected_critic = st.selectbox("Select a Critic", critic_names, index=0, label_visibility="collapsed")
+    # Main Content
+    st.title(f"Predictive Insights: {selected_critic}")
+    
+    # 1. Profile View
+    display_critic_profile(importances_df, selected_critic)
+    
     st.divider()
-
-    # --- Overall and Critic-Specific Stats ---
-    if selected_critic:
-        display_model_performance_stats(merged_df, selected_critic)
-        st.divider()
-        display_feature_importance_charts(importances_df, selected_critic)
-        st.divider()
-
-    # --- Single Game Prediction ---
-    st.markdown("### Explore a Single Prediction")
-    st.caption(f"Showing predictions for **{selected_critic}**.")
-    selected_game = st.selectbox("Select a Game", game_names, index=0)
     
-    if selected_critic and selected_game:
-        display_single_prediction(merged_df, selected_critic, selected_game)
-
-    # --- Logout Button ---
-    if st.button("Log out"):
-        st.session_state["password_correct"] = False
-        st.rerun()
+    # 2. Single Game Breakdown
+    display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game)
 
 if __name__ == "__main__":
     main()
