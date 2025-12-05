@@ -7,6 +7,7 @@ from sqlalchemy import (
     Text,
     BigInteger
 )
+from sqlalchemy.types import JSON  # Needed for user_tags
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -35,6 +36,31 @@ class Game(Base):
     nominator = relationship("Critic", back_populates="games_nominated")
     ratings = relationship("Rating", back_populates="game")
     predictions = relationship("CriticPrediction", back_populates="game")
+    
+    # New: Link to details (One-to-One)
+    details = relationship("GameDetails", uselist=False, back_populates="game")
+
+class GameDetails(Base):
+    """
+    Stores metadata (Steam tags, price, release date) scraped from Steam.
+    Required for the new content-based prediction system.
+    """
+    __tablename__ = 'games_details'
+    
+    # In your Supabase schema, 'id' is the FK to games.id and acts as PK
+    id = Column(BigInteger, ForeignKey('games.id'), primary_key=True)
+    
+    appid = Column(BigInteger)
+    name = Column(Text)
+    user_tags = Column(JSON) # Stores the list of tags e.g. ["RPG", "Indie"]
+    price_usd = Column(Float)
+    release_date = Column(Text)
+    developer_genres = Column(Text)
+    developers = Column(Text)
+    publishers = Column(Text)
+    
+    # Relationship
+    game = relationship("Game", back_populates="details")
 
 class Rating(Base):
     """Represents a score a critic has given to a game."""
@@ -49,14 +75,14 @@ class Rating(Base):
     game = relationship("Game", back_populates="ratings")
 
 class CriticPrediction(Base):
-    """Stores the model's predicted score and skip probability for a critic-game pair."""
+    """Stores the model's predicted score and skip probability."""
     __tablename__ = 'critic_predictions'
     
-    # Composite primary key linking a prediction to a specific game and critic
+    # Composite primary key
     id = Column(BigInteger, ForeignKey('games.id'), primary_key=True)
     critic_id = Column(BigInteger, ForeignKey('critics.id'), primary_key=True)
     
-    name = Column(Text) # Game name, likely for easier lookups
+    name = Column(Text)
     predicted_score = Column(Float)
     predicted_skip_probability = Column(Float)
     
@@ -65,24 +91,18 @@ class CriticPrediction(Base):
     game = relationship("Game", back_populates="predictions")
 
 class CriticFeatureImportance(Base):
-    """Stores the feature importance values for each critic's prediction models."""
+    """
+    Stores the 'Affinity Profile' for each critic.
+    'model_type' is now primarily 'relative_affinity'.
+    'importance' stores the affinity score (e.g., +1.5 or -0.5).
+    """
     __tablename__ = 'critic_feature_importances'
     
-    # Assumed composite primary key, as one is required for the ORM
     critic_id = Column(BigInteger, ForeignKey('critics.id'), primary_key=True)
-    model_type = Column(Text, primary_key=True)
-    feature = Column(Text, primary_key=True)
+    model_type = Column(Text, primary_key=True) # e.g., 'relative_affinity'
+    feature = Column(Text, primary_key=True)    # e.g., 'tag__RPG' or 'bin__Price_Low'
     
     importance = Column(Float)
     
     # Relationship
     critic = relationship("Critic", back_populates="feature_importances")
-
-class CriticPredictionExplanation(Base):
-    """Stores the pre-computed SHAP values for each prediction."""
-    __tablename__ = 'critic_prediction_explanations'
-    critic_id = Column(BigInteger, ForeignKey('critics.id'), primary_key=True)
-    game_id = Column(BigInteger, ForeignKey('games.id'), primary_key=True)
-    model_type = Column(Text, primary_key=True)
-    base_value = Column(Float)
-    shap_values = Column(Text) # Stored as a JSON string
