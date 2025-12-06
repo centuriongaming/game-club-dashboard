@@ -80,6 +80,7 @@ def load_prediction_data(_session):
     importances_df = pd.read_sql(
         sa.select(CriticFeatureImportance.feature, CriticFeatureImportance.importance, Critic.critic_name, CriticFeatureImportance.model_type)
         .join(Critic, Critic.id == CriticFeatureImportance.critic_id)
+        .where(CriticFeatureImportance.model_type == 'deviation_weighted'),
         _session.bind
     )
 
