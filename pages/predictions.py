@@ -14,8 +14,8 @@ from database_models import Critic, Game, Rating, CriticPrediction, CriticFeatur
 st.set_page_config(page_title="Predictions", layout="wide")
 
 # --- Constants for Styling ---
-COLOR_POS = "#2E86C1" # Professional Blue
-COLOR_NEG = "#E74C3C" # Professional Red
+COLOR_POS = "#2E86C1" 
+COLOR_NEG = "#E74C3C" 
 
 # --- Feature Engineering Helpers ---
 def clean_tags(val):
@@ -100,9 +100,9 @@ def load_prediction_data(_session):
 
 # --- Visualization Helper ---
 def plot_diverging_bar(data, x_col, y_col, title, height=400, x_label="Preference Delta (Points)"):
-    """
-    Standardized Diverging Bar Chart.
-    """
+    if data.empty:
+        return None
+
     data = data.copy()
     data['Sentiment'] = data[x_col].apply(lambda x: 'Positive Affinity' if x >= 0 else 'Negative Affinity')
     data['Tooltip'] = data[x_col].apply(lambda x: f"{x:+.2f}")
@@ -136,6 +136,9 @@ def plot_diverging_bar(data, x_col, y_col, title, height=400, x_label="Preferenc
 
 # --- Helper: Taste Treemap ---
 def plot_taste_treemap(data, title):
+    if data.empty:
+        return None
+
     data = data.copy()
     data['Category'] = data['importance'].apply(lambda x: 'Positive' if x > 0 else 'Negative')
     data['Abs_Impact'] = data['importance'].abs()
@@ -169,12 +172,16 @@ def plot_taste_treemap(data, title):
 def display_critic_profile(importances_df, selected_critic, critic_baseline):
     st.subheader(f"Critic Profile: {selected_critic}")
     
+    # 1. Top Metrics
     c_base, c_count, c_top = st.columns(3)
     c_base.metric("Baseline Score", f"{critic_baseline:.2f}", help="The average score this critic gives to all games.")
     
     critic_data = importances_df[importances_df['critic_name'] == selected_critic].copy()
+    
     if critic_data.empty:
-        st.warning("No profile data found.")
+        c_count.metric("Learned Tags", "0")
+        c_top.metric("Top Driver", "N/A")
+        st.warning("Not enough data to generate a profile. (User needs to rate more games).")
         return
     
     tag_df = critic_data[critic_data['feature'].str.startswith('tag__')].copy()
@@ -182,19 +189,30 @@ def display_critic_profile(importances_df, selected_critic, critic_baseline):
     
     c_count.metric("Learned Tags", len(tag_df))
     
-    top_tag = tag_df.loc[tag_df['importance'].abs().idxmax()]
-    c_top.metric(f"Top Driver", top_tag['feature'], f"{top_tag['importance']:+.2f}")
+    # SAFETY CHECK: Only calculate max if data exists
+    if not tag_df.empty:
+        top_tag = tag_df.loc[tag_df['importance'].abs().idxmax()]
+        c_top.metric(f"Top Driver", top_tag['feature'], f"{top_tag['importance']:+.2f}")
+    else:
+        c_top.metric("Top Driver", "N/A")
 
+    # 2. Treemap
     st.markdown("### Feature Affinity Map")
     st.caption("Visualizes the full spectrum of the critic's preferences. Size indicates magnitude of impact.")
     
     treemap_fig = plot_taste_treemap(tag_df, "")
-    st.plotly_chart(treemap_fig, use_container_width=True)
+    if treemap_fig:
+        st.plotly_chart(treemap_fig, use_container_width=True)
+    else:
+        st.info("No tag data available for visualization.")
 
     with st.expander("View Raw Data"):
-        display_df = tag_df[['feature', 'importance']].copy()
-        display_df.columns = ['Tag', 'Affinity']
-        st.dataframe(display_df.sort_values('Affinity', ascending=False), use_container_width=True)
+        if not tag_df.empty:
+            display_df = tag_df[['feature', 'importance']].copy()
+            display_df.columns = ['Tag', 'Affinity']
+            st.dataframe(display_df.sort_values('Affinity', ascending=False), use_container_width=True)
+        else:
+            st.write("No data.")
 
 
 def display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game, critic_baseline):
@@ -278,6 +296,8 @@ def display_prediction_breakdown(merged_df, games_df, importances_df, selected_c
                         st.markdown(f"- {row['Feature']} (+{row['Impact']:.2f})")
                 else:
                     st.caption("No significant positive drivers found.")
+        else:
+            st.caption("No strong profile matches found to assess risk.")
     else:
         st.info("Skip probability data unavailable.")
 
@@ -293,7 +313,11 @@ def display_prediction_breakdown(merged_df, games_df, importances_df, selected_c
         contrib_df['abs_impact'] = contrib_df['Impact'].abs()
         chart_df = contrib_df.sort_values('abs_impact', ascending=False).head(15)
         
-        st.plotly_chart(plot_diverging_bar(chart_df, 'Impact', 'Feature', ""), use_container_width=True)
+        fig = plot_diverging_bar(chart_df, 'Impact', 'Feature', "")
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Insufficient data for chart.")
     else:
         st.warning("No overlapping features found between the game and the critic's profile.")
 
@@ -318,6 +342,8 @@ def main():
     # Calculate Baseline
     critic_rows = merged_df[merged_df['critic_name'] == selected_critic]
     actual_scores = critic_rows[critic_rows['score'].notna()]['score']
+    
+    # SAFETY: Default to 5.0 if no ratings exist
     critic_baseline = actual_scores.mean() if not actual_scores.empty else 5.0
 
     tab_profile, tab_game = st.tabs(["Critic Profile", "Game Analysis"])
