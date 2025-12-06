@@ -11,17 +11,13 @@ from database_models import Critic, Game, Rating, CriticPrediction
 st.set_page_config(page_title="Model Analytics", layout="wide")
 
 # --- Constants ---
-COLOR_GOOD = "#2ECC71"
-COLOR_WARN = "#F1C40F"
-COLOR_BAD = "#E74C3C"
-COLOR_NEUTRAL = "#95A5A6"
+# Professional color palette
+COLOR_CORRECT = "#2ECC71" # Green
+COLOR_ERROR = "#E74C3C"   # Red
 
 # --- Data Loading ---
 @st.cache_data
 def load_analytics_data(_session):
-    # Fetch all Predictions joined with Actual Ratings
-    # We need: Critic, Game, Predicted Score, Predicted Skip Prob, Actual Score
-    
     query = sa.text("""
         SELECT 
             c.critic_name,
@@ -33,22 +29,16 @@ def load_analytics_data(_session):
         JOIN critics c ON cp.critic_id = c.id
         JOIN games g ON cp.id = g.id
         LEFT JOIN ratings r ON cp.critic_id = r.critic_id AND cp.id = r.game_id
-        WHERE g.upcoming = FALSE -- Only analyze released games
+        WHERE g.upcoming = FALSE 
     """)
     
     df = pd.read_sql(query, _session.bind)
     
-    # Feature Engineering for Analytics
-    # 1. actual_score is NaN implies a "Skip" (based on our DB logic)
+    # Logic: If actual_score is NaN, it counts as a Skip
     df['is_actual_skip'] = df['actual_score'].isna()
-    
-    # 2. Predicted Skip (Threshold > 50%)
     df['is_predicted_skip'] = df['predicted_skip_probability'] > 0.5
     
-    # 3. Error Calculation (Only for games that were PLAYED)
-    # Error = Predicted - Actual
-    # Positive Error = Model was too Optimistic
-    # Negative Error = Model was too Pessimistic
+    # Calculate Error (Predicted - Actual) for played games only
     df['error'] = df['predicted_score'] - df['actual_score']
     df['abs_error'] = df['error'].abs()
     
@@ -63,9 +53,7 @@ def calculate_metrics(df):
 
     mae = played_df['abs_error'].mean()
     rmse = np.sqrt((played_df['error'] ** 2).mean())
-    bias = played_df['error'].mean() # Mean Signed Error
-    
-    # Correlation (how well do the ranks match?)
+    bias = played_df['error'].mean()
     correlation = played_df['predicted_score'].corr(played_df['actual_score'])
     
     return {
@@ -81,11 +69,10 @@ def calculate_metrics(df):
 def plot_calibration_scatter(df):
     """
     Actual vs Predicted Scatter Plot.
-    Shows alignment.
     """
     played_df = df[df['is_actual_skip'] == False].copy()
     
-    # Add jitter to avoid overplotting on integer scores
+    # Jitter for visualization
     played_df['actual_jitter'] = played_df['actual_score'] + np.random.normal(0, 0.1, size=len(played_df))
     
     fig = px.scatter(
@@ -93,12 +80,12 @@ def plot_calibration_scatter(df):
         x='actual_jitter',
         y='predicted_score',
         color='error',
-        color_continuous_scale='RdBu_r', # Red = High Error, Blue = Low Error
+        color_continuous_scale='RdBu_r', 
         hover_data=['game_name', 'critic_name', 'actual_score', 'predicted_score'],
         title="Actual vs. Predicted Scores"
     )
     
-    # Perfect Prediction Line (y=x)
+    # Perfect Prediction Line
     fig.add_shape(
         type="line",
         x0=0, y0=0, x1=10, y1=10,
@@ -106,7 +93,7 @@ def plot_calibration_scatter(df):
     )
     
     fig.update_layout(
-        xaxis_title="Actual Score (with slight visual jitter)",
+        xaxis_title="Actual Score",
         yaxis_title="Predicted Score",
         coloraxis_colorbar=dict(title="Error"),
         height=500
@@ -115,8 +102,7 @@ def plot_calibration_scatter(df):
 
 def plot_error_histogram(df):
     """
-    Shows the distribution of errors. 
-    Ideally a bell curve centered at 0.
+    Distribution of errors.
     """
     played_df = df[df['is_actual_skip'] == False]
     
@@ -128,50 +114,58 @@ def plot_error_histogram(df):
         color_discrete_sequence=['#3498DB']
     )
     
-    # Zero line
-    fig.add_vline(x=0, line_width=3, line_color="black", annotation_text="Perfect Accuracy")
+    fig.add_vline(x=0, line_width=2, line_color="black")
     
     fig.update_layout(
-        xaxis_title="Prediction Error (Predicted - Actual)",
-        yaxis_title="Count of Predictions",
+        xaxis_title="Prediction Error",
+        yaxis_title="Count",
         bargap=0.1
     )
     return fig
 
-def plot_confusion_matrix(df):
+def plot_confusion_heatmap(df):
     """
-    Shows classification accuracy for Skips vs Plays.
+    Standard Confusion Matrix Heatmap.
+    Visualizes True Positives, False Positives, etc.
     """
-    # Create Confusion Categories
-    conditions = [
-        (df['is_actual_skip'] == True) & (df['is_predicted_skip'] == True),  # True Positive (Correct Skip)
-        (df['is_actual_skip'] == False) & (df['is_predicted_skip'] == False), # True Negative (Correct Play)
-        (df['is_actual_skip'] == True) & (df['is_predicted_skip'] == False), # False Negative (Missed Skip)
-        (df['is_actual_skip'] == False) & (df['is_predicted_skip'] == True)  # False Positive (False Alarm)
-    ]
-    choices = ['Correctly Skipped', 'Correctly Played', 'Model said Play (User Skipped)', 'Model said Skip (User Played)']
+    # Create the matrix
+    # Rows: Actual, Cols: Predicted
+    confusion = pd.crosstab(
+        df['is_actual_skip'].replace({True: 'Skipped', False: 'Played'}), 
+        df['is_predicted_skip'].replace({True: 'Skipped', False: 'Played'}), 
+        rownames=['Actual'], 
+        colnames=['Predicted']
+    )
+
+    # Ensure all columns/rows exist even if data is missing
+    for label in ['Played', 'Skipped']:
+        if label not in confusion.columns: confusion[label] = 0
+        if label not in confusion.index: confusion.loc[label] = 0
+        
+    # Reorder for logical flow: Played -> Skipped
+    confusion = confusion.reindex(index=['Played', 'Skipped'], columns=['Played', 'Skipped'])
     
-    df['outcome'] = np.select(conditions, choices, default='Error')
+    # Convert to matrix for heatmap
+    z = confusion.values
+    x = confusion.columns.tolist()
+    y = confusion.index.tolist()
+
+    # Create annotation text (the counts)
+    z_text = [[str(y) for y in x] for x in z]
+
+    fig = px.imshow(
+        z, 
+        x=x, 
+        y=y, 
+        color_continuous_scale='Blues',
+        text_auto=True,
+        title="Skip Prediction Accuracy (Confusion Matrix)"
+    )
     
-    counts = df['outcome'].value_counts().reset_index()
-    counts.columns = ['Outcome', 'Count']
-    
-    # Assign Colors
-    color_map = {
-        'Correctly Skipped': COLOR_GOOD,
-        'Correctly Played': COLOR_GOOD,
-        'Model said Play (User Skipped)': COLOR_BAD, # Annoying recommendation
-        'Model said Skip (User Played)': COLOR_WARN  # Missed opportunity
-    }
-    
-    fig = px.pie(
-        counts, 
-        values='Count', 
-        names='Outcome',
-        title="Skip Prediction Accuracy",
-        color='Outcome',
-        color_discrete_map=color_map,
-        hole=0.4
+    fig.update_layout(
+        xaxis_title="Model Predicted",
+        yaxis_title="User Actually",
+        height=400
     )
     return fig
 
@@ -181,14 +175,14 @@ def main():
     check_auth()
     session = get_sqla_session()
     
-    st.title("📊 Model Analytics")
-    st.markdown("Transparency report: How accurately is the model predicting user behavior?")
+    st.title("Model Analytics")
+    st.markdown("Transparency report regarding model performance and accuracy.")
     
     df = load_analytics_data(session)
     metrics = calculate_metrics(df)
     
     if metrics is None or metrics['N'] < 5:
-        st.error("Not enough data to calculate analytics yet. Need at least 5 completed ratings.")
+        st.error("Insufficient data. Need at least 5 completed ratings.")
         st.stop()
         
     # --- 1. Global Metrics ---
@@ -198,92 +192,87 @@ def main():
     
     # MAE
     mae_val = metrics['MAE']
-    mae_color = "normal"
-    if mae_val < 1.0: mae_color = "off" # Greenish UI hint isn't available in standard metric but logic holds
     c1.metric(
         "Average Error (MAE)", 
         f"{mae_val:.2f} pts", 
-        help="On average, how far off is the prediction? Lower is better.",
-        delta="-0.1" if mae_val < 1.5 else "High Error",
-        delta_color="inverse"
+        help="On average, how far off is the prediction?"
     )
     
     # Bias
     bias_val = metrics['Bias']
     bias_text = "Balanced"
-    if bias_val > 0.5: bias_text = "Over-Optimistic"
+    if bias_val > 0.5: bias_text = "Optimistic"
     elif bias_val < -0.5: bias_text = "Pessimistic"
     
     c2.metric(
         "Model Bias", 
         f"{bias_val:+.2f}", 
-        help="Positive = Model predicts too high. Negative = Model predicts too low.",
+        help="Positive means model over-predicts. Negative means under-predicts.",
         delta=bias_text,
         delta_color="off"
     )
     
-    # Classification Accuracy
+    # Accuracy
     correct_preds = len(df[df['is_actual_skip'] == df['is_predicted_skip']])
     total_preds = len(df)
     acc = correct_preds / total_preds
     c3.metric(
         "Decision Accuracy", 
         f"{acc:.1%}", 
-        help="How often did the model correctly guess if a user would Play or Skip?"
+        help="Percentage of correct Play vs. Skip predictions."
     )
     
     # Correlation
     c4.metric(
         "Correlation",
         f"{metrics['Correlation']:.2f}",
-        help="1.0 = Perfect Rank Match. 0.0 = Random Guessing."
+        help="Rank correlation between predicted and actual scores."
     )
 
     st.divider()
 
     # --- 2. Regression Analysis (Scores) ---
-    st.subheader("🎯 Score Accuracy")
+    st.subheader("Score Accuracy")
     col_scatter, col_hist = st.columns(2)
     
     with col_scatter:
         st.plotly_chart(plot_calibration_scatter(df), use_container_width=True)
-        st.caption("**How to read:** Points on the dotted line are perfect predictions. Points **above** the line mean the model liked the game more than the user did.")
+        st.caption("Points on the dotted line are perfect predictions.")
         
     with col_hist:
         st.plotly_chart(plot_error_histogram(df), use_container_width=True)
-        st.caption("**How to read:** We want a tall spike at 0. If the curve is shifted left, the model is too harsh. If shifted right, it's too nice.")
+        st.caption("A spike at 0 indicates high accuracy.")
 
     st.divider()
 
     # --- 3. Classification Analysis (Skips) ---
-    st.subheader("🚫 Skip Prediction")
+    st.subheader("Skip Prediction")
     col_conf, col_details = st.columns([1, 2])
     
     with col_conf:
-        st.plotly_chart(plot_confusion_matrix(df), use_container_width=True)
+        st.plotly_chart(plot_confusion_heatmap(df), use_container_width=True)
         
     with col_details:
-        st.markdown("#### Why this matters")
+        st.markdown("#### Performance Breakdown")
         st.write("""
-        For a Game Club, **time is valuable**. 
-        * **False Positives (Red in chart):** The model said "You'll like this!" but you skipped it. This wastes recommendation slots.
-        * **False Negatives (Yellow in chart):** The model said "Skip it," but you played it anyway. This means the model might be hiding gems.
-        """)
+        This heatmap shows where the model succeeds and fails in predicting whether a user will play a game.
         
-        # Show stats table
-        confusion = pd.crosstab(df['is_actual_skip'], df['is_predicted_skip'], rownames=['Actual Skip'], colnames=['Predicted Skip'])
-        st.dataframe(confusion, use_container_width=True)
+        * **Diagonal (Dark Blue):** Correct predictions.
+        * **Off-Diagonal (Light Blue):** Errors.
+        
+        False Positives (Model said 'Played', User 'Skipped') are generally more annoying to users than False Negatives, as they clutter recommendations.
+        """)
 
     st.divider()
 
-    # --- 4. Leaderboard (Who is hardest to predict?) ---
-    st.subheader("🧩 Difficulty by Critic")
-    st.caption("Which users are the most unpredictable?")
+    # --- 4. Leaderboard ---
+    st.subheader("Difficulty by Critic")
+    st.caption("Identifies which users deviate most often from the model's predictions.")
     
     critic_stats = []
     for critic, group in df.groupby('critic_name'):
         played_group = group[group['is_actual_skip'] == False]
-        if len(played_group) < 3: continue # Skip users with little data
+        if len(played_group) < 3: continue 
         
         c_mae = played_group['abs_error'].mean()
         c_bias = played_group['error'].mean()
@@ -292,7 +281,6 @@ def main():
             "Critic": critic,
             "Avg Error (Points)": c_mae,
             "Bias": c_bias,
-            "Tendency": "Hard to Please" if c_bias > 0.5 else ("Easy to Please" if c_bias < -0.5 else "Neutral"),
             "Rated Games": len(played_group)
         })
         
@@ -308,7 +296,6 @@ def main():
         hide_index=True
     )
 
-    # Footer
     st.write("")
     if st.button("Log out"):
         st.session_state["password_correct"] = False
