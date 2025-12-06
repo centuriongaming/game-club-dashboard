@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import sqlalchemy as sa
 import plotly.express as px
+import plotly.graph_objects as go  # Added for Waterfall support if needed later
 import json
 import ast
 from datetime import datetime
@@ -14,8 +15,8 @@ from database_models import Critic, Game, Rating, CriticPrediction, CriticFeatur
 st.set_page_config(page_title="Predictions", layout="wide")
 
 # --- Constants for Styling ---
-COLOR_POS = "#1f77b4" # Muted Blue (Colorblind Safe)
-COLOR_NEG = "#ff7f0e" # Safety Orange (Colorblind Safe)
+COLOR_POS = "#2E86C1" # Strong Blue (Clear Positive)
+COLOR_NEG = "#E74C3C" # Soft Red (Clear Negative) - Changed from Orange for better "Stop/Go" semantic
 
 # --- Feature Engineering Helpers ---
 def clean_tags(val):
@@ -98,161 +99,242 @@ def load_prediction_data(_session):
     
     return critics_df['critic_name'].tolist(), games_df, merged_df, importances_df
 
-# --- Helper: Diverging Bar Chart ---
-def plot_diverging_bar(data, x_col, y_col, title, height=400):
-    """Creates a center-aligned diverging bar chart (Blue positive, Orange negative)."""
+# --- Visualization Helper ---
+def plot_diverging_bar(data, x_col, y_col, title, height=400, x_label="Impact on Score (Points)"):
+    """
+    Standardized Diverging Bar Chart.
+    Best for: Comparing 'Pros' vs 'Cons' relative to a neutral baseline.
+    """
     data = data.copy()
-    # Add sentiment column for coloring
-    data['Sentiment'] = data[x_col].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
-    
+    data['Sentiment'] = data[x_col].apply(lambda x: 'Increases Score' if x >= 0 else 'Decreases Score')
+    data['Tooltip'] = data[x_col].apply(lambda x: f"{x:+.2f} pts")
+
     fig = px.bar(
         data, 
         x=x_col, 
         y=y_col, 
         orientation='h',
         title=title,
-        text_auto='.2f',
+        text='Tooltip',
         color='Sentiment',
-        color_discrete_map={'Positive': COLOR_POS, 'Negative': COLOR_NEG}
+        color_discrete_map={'Increases Score': COLOR_POS, 'Decreases Score': COLOR_NEG},
+        hover_data={'Sentiment': True, x_col: False, y_col: False}
     )
     
+    # Visual Polish: Add a Zero Line
+    fig.add_vline(x=0, line_width=2, line_color="white", opacity=0.5)
+
     fig.update_layout(
-        showlegend=False,
-        xaxis_title="Relative Affinity (Right = Loves, Left = Dislikes)",
+        showlegend=True,
+        legend_title=None,
+        xaxis_title=x_label,
         yaxis_title=None,
         height=height,
-        xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='white'),
-        margin=dict(l=10, r=10, t=40, b=10)
+        xaxis=dict(zeroline=False, gridcolor='#333'), # Disable default zero line to use our custom one
+        margin=dict(l=10, r=10, t=40, b=10),
+        font=dict(size=14)
     )
     fig.update_yaxes(categoryorder='total ascending')
     return fig
 
+# --- Explainer ---
+def render_algorithm_explainer():
+    with st.expander("ℹ️ How does this work? (Click to Expand)"):
+        st.markdown("""
+        ### 🤖 Inside the Prediction Engine
+        This system predicts enjoyment using **Deviation Analysis**.
+        
+        1.  **The Baseline:** Every critic has a "Baseline Average" (e.g., 7.5/10). This is their starting point.
+        2.  **The Adjustments:** We look at the game's features (Genre, Price, Age).
+            * If the critic *loves* RPGs, we might add **+0.5 points**.
+            * If they *hate* Expensive games, we might subtract **-0.8 points**.
+        3.  **The Prediction:** `Baseline + Adjustments = Final Score`.
+        
+        *Note: We also learn from **Skipped Games**. If a critic chooses not to play a game, the system treats that as a negative signal for those specific features.*
+        """)
+
 # --- UI Components ---
 
-def display_critic_profile(importances_df, selected_critic):
+# --- Updated Profile View ---
+def display_critic_profile(importances_df, selected_critic, critic_baseline):
     st.subheader(f"🧠 Taste Profile: {selected_critic}")
+    
+    # Metric Row
+    c_base, c_count, c_top = st.columns(3)
+    c_base.metric("Baseline Score", f"{critic_baseline:.2f}", help="The average score this critic gives.")
     
     critic_data = importances_df[importances_df['critic_name'] == selected_critic].copy()
     if critic_data.empty:
-        st.info("No affinity profile data found.")
+        st.warning("No profile data found.")
         return
+    
+    # Filter for Tags only (remove price/age bins for the main tag view)
+    tag_df = critic_data[critic_data['feature'].str.startswith('tag__')].copy()
+    tag_df['feature'] = tag_df['feature'].str.replace('tag__', '') # Clean names
+    
+    c_count.metric("Learned Tags", len(tag_df), help="Total number of tags we have learned preferences for.")
+    
+    # Find their #1 Obsession
+    top_tag = tag_df.loc[tag_df['importance'].abs().idxmax()]
+    c_top.metric(f"Top Driver", top_tag['feature'], f"{top_tag['importance']:+.2f} pts")
 
-    # 1. Price Sensitivity
+    st.divider()
+
+    # --- 1. The Full Spectrum Treemap ---
+    st.markdown("### 🗺️ The Taste Map (All Tags)")
+    st.caption("This map shows every tag we've learned about. **Bigger Box = Stronger Opinion**. Blue is Positive, Orange is Negative.")
+    
+    treemap_fig = plot_taste_treemap(tag_df, f"{selected_critic}'s Complete Taste Profile")
+    st.plotly_chart(treemap_fig, use_container_width=True)
+    
+
+    st.divider()
+
+    # --- 2. Traditional Breakdowns (Price/Age) ---
+    st.markdown("### 💰 & 📅 Price and Age Preferences")
+    
     price_df = critic_data[critic_data['feature'].str.startswith('bin__Price')].copy()
     price_df['Label'] = price_df['feature'].str.replace('bin__Price_', '').str.replace('_', ' ')
     price_order = ["Free", "$0.01-$14.99", "$15.00-$29.99", "$30.00-$49.99", "$50.00+"]
     
-    # 2. Age Sensitivity
     age_df = critic_data[critic_data['feature'].str.startswith('bin__Age')].copy()
     age_df['Label'] = age_df['feature'].str.replace('bin__Age_', '').str.replace('_', ' ')
     age_order = ["<1y", "1-3y", "3-5y", "5-10y", "10y+"]
 
-    # 3. Tags (Merged Diverging Chart)
-    tag_df = critic_data[critic_data['feature'].str.startswith('tag__')].copy()
-    tag_df['Label'] = tag_df['feature'].str.replace('tag__', '')
-    
-    # Find most impactful tags (absolute value)
-    tag_df['abs_importance'] = tag_df['importance'].abs()
-    top_tags = tag_df.sort_values('abs_importance', ascending=False).head(12)
-
-    # Render Layout
     c1, c2 = st.columns(2)
     with c1:
-        # Price Chart (Diverging)
         fig_price = plot_diverging_bar(price_df, 'importance', 'Label', "Price Sensitivity", height=300)
         fig_price.update_yaxes(categoryorder='array', categoryarray=price_order)
         st.plotly_chart(fig_price, use_container_width=True)
     with c2:
-        # Age Chart (Diverging)
         fig_age = plot_diverging_bar(age_df, 'importance', 'Label', "Age Preference", height=300)
         fig_age.update_yaxes(categoryorder='array', categoryarray=age_order)
         st.plotly_chart(fig_age, use_container_width=True)
 
-    st.markdown("#### Most Polarizing Genres & Tags")
-    st.caption("Tags pointing **Right (Blue)** are favorites. Tags pointing **Left (Orange)** are disliked.")
-    st.plotly_chart(plot_diverging_bar(top_tags, 'importance', 'Label', "", height=500), use_container_width=True)
+    # --- 3. Searchable Data Grid ---
+    with st.expander("🔎 View Raw Data Grid (Searchable)"):
+        st.markdown("Search for specific genres (e.g., 'Roguelike', 'FPS') to see exact scores.")
+        
+        # Format for display
+        display_df = tag_df[['feature', 'importance']].copy()
+        display_df.columns = ['Tag', 'Impact (Points)']
+        display_df['Sentiment'] = display_df['Impact (Points)'].apply(lambda x: '❤️ Likes' if x > 0 else '💔 Dislikes')
+        
+        st.dataframe(
+            display_df.sort_values('Impact (Points)', ascending=False),
+            column_config={
+                "Impact (Points)": st.column_config.NumberColumn(format="%.2f"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
 
-
-def display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game):
-    st.markdown(f"### Prediction Analysis: {selected_game}")
+def display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game, critic_baseline):
+    st.markdown(f"### 🎯 Analysis: {selected_game}")
     
-    # 1. Get Prediction Record
     record = merged_df[(merged_df['critic_name'] == selected_critic) & (merged_df['game_name'] == selected_game)]
     if record.empty:
-        st.warning("No data.")
+        st.warning("No data found.")
         return
     record = record.iloc[0]
     
-    is_upcoming = record['upcoming']
+    predicted_score = record['predicted_score']
+    
+    # --- The Equation Visualizer ---
+    st.markdown("#### 🧮 The Calculation")
+    
+    col_base, col_plus, col_adj, col_equals, col_final = st.columns([2, 0.5, 2, 0.5, 2])
+    
+    with col_base:
+        st.metric("Critic Baseline", f"{critic_baseline:.2f}", help="The critic's average score.")
+    with col_plus:
+        st.markdown("<h3 style='text-align: center; color: gray;'>+</h3>", unsafe_allow_html=True)
+    with col_adj:
+        adj_val = predicted_score - critic_baseline if pd.notna(predicted_score) else 0.0
+        st.metric("Total Adjustments", f"{adj_val:+.2f}", delta=adj_val, help="Sum of all feature impacts below.")
+    with col_equals:
+        st.markdown("<h3 style='text-align: center; color: gray;'>=</h3>", unsafe_allow_html=True)
+    with col_final:
+        st.metric("Predicted Score", f"{predicted_score:.2f}" if pd.notna(predicted_score) else "N/A")
 
-    # 2. Get Game Features
+    st.divider()
+
+    # --- Feature Contributions ---
     game_meta = games_df[games_df['game_name'] == selected_game].iloc[0]
     game_features = get_game_features(game_meta)
-
-    # 3. Match with Critic Profile
     critic_profile = importances_df[importances_df['critic_name'] == selected_critic]
     
     contributions = []
     for f in game_features:
         match = critic_profile[critic_profile['feature'] == f]
-        affinity = match.iloc[0]['importance'] if not match.empty else 0.0
-        clean_name = f.replace('tag__', '').replace('bin__', '').replace('_', ' ')
-        contributions.append({'Feature': clean_name, 'Impact': affinity})
+        if not match.empty:
+            affinity = match.iloc[0]['importance']
+            clean_name = f.replace('tag__', '').replace('bin__', '').replace('_', ' ')
+            contributions.append({'Feature': clean_name, 'Impact': affinity})
     
     contrib_df = pd.DataFrame(contributions)
-    
-    # 4. Truncate for Readability
-    contrib_df['abs_impact'] = contrib_df['Impact'].abs()
-    contrib_df = contrib_df.sort_values('abs_impact', ascending=False).head(12)
+    if not contrib_df.empty:
+        contrib_df['abs_impact'] = contrib_df['Impact'].abs()
+        contrib_df = contrib_df.sort_values('abs_impact', ascending=False).head(12)
 
-    # --- Render UI ---
-    
-    # Top Row: The Numbers
-    with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        
-        # Metric 1: Predicted Score
-        pred_val = f"{record['predicted_score']:.2f}" if pd.notna(record['predicted_score']) else "N/A"
-        c1.metric("Predicted Score", pred_val, help="The score the model thinks this critic will give based on their taste profile.")
-        
-        # Metric 2: Skip Prob
-        skip_val = f"{record['predicted_skip_probability']*100:.1f}%" if pd.notna(record['predicted_skip_probability']) else "N/A"
-        c2.metric("Skip Probability", skip_val, help="The likelihood that the critic will choose NOT to play this game.")
-        
-        # Metric 3: Actual Outcome (Handles Upcoming)
-        if is_upcoming:
-            actual_val = "Upcoming"
-            actual_help = "This game has not been released yet."
-        else:
-            if pd.notna(record['score']):
-                actual_val = f"{record['score']:.1f}"
-                actual_help = "The actual score given by the critic."
-            elif record['actual_skip']:
-                actual_val = "Skipped"
-                actual_help = "The critic chose not to play this game."
-            else:
-                actual_val = "Pending"
-                actual_help = "Released, but not yet rated."
-                
-        c3.metric("Actual Outcome", actual_val, help=actual_help)
-
-    # Bottom Row: The "Why"
-    st.markdown("#### Key Drivers")
-    st.caption("How the specific features of this game matched the critic's profile.")
+    st.markdown("#### 🔍 What drove this score?")
+    st.caption(f"These are the specific features of *{selected_game}* that {selected_critic} reacts to.")
     
     if not contrib_df.empty:
-        st.plotly_chart(plot_diverging_bar(contrib_df, 'Impact', 'Feature', ""), use_container_width=True)
+        st.plotly_chart(plot_diverging_bar(contrib_df, 'Impact', 'Feature', "", x_label="Impact on Score (Points)"), use_container_width=True)
     else:
-        st.info("No feature data available for this game.")
+        st.info("This game has no distinct features that match the critic's profile strong enough to sway the score.")
+# --- New Helper: Taste Treemap ---
+def plot_taste_treemap(data, title):
+    """
+    Generates a Treemap to show ALL tags at once.
+    Hierarchy: Root -> Sentiment (Like/Dislike) -> Tag
+    Size: Absolute Impact
+    Color: Real Impact
+    """
+    data = data.copy()
+    
+    # 1. Create Hierarchy
+    data['Category'] = data['importance'].apply(lambda x: '✅ Likes / Boosts Score' if x > 0 else '❌ Dislikes / Lowers Score')
+    data['Abs_Impact'] = data['importance'].abs()
+    
+    # 2. Tooltip formatting
+    data['Tooltip'] = data['importance'].apply(lambda x: f"{x:+.2f} points")
+
+    # 3. Build Plot
+    fig = px.treemap(
+        data,
+        path=[px.Constant("All Features"), 'Category', 'feature'], # The hierarchy
+        values='Abs_Impact', # Size of the box
+        color='importance',  # Color of the box
+        color_continuous_scale=[(0, COLOR_NEG), (0.5, '#ffffff'), (1, COLOR_POS)], # Diverging scale
+        color_continuous_midpoint=0,
+        custom_data=['Tooltip', 'importance']
+    )
+
+    fig.update_traces(
+        hovertemplate='<b>%{label}</b><br>Impact: %{customdata[0]}<extra></extra>',
+        textinfo="label+value", # Show label and the size value
+        texttemplate="<b>%{label}</b>", # Just show the name cleanly
+    )
+
+    fig.update_layout(
+        title=title,
+        height=600, # Taller for more detail
+        margin=dict(t=50, l=10, r=10, b=10),
+        coloraxis_showscale=False # Hide the color bar (the categories explain it enough)
+    )
+    
+    return fig
 
 # --- Main ---
 def main():
     check_auth()
     session = get_sqla_session()
     
-    st.title("Predictive Analytics")
+    st.title("🔮 Predictive Analytics")
+    render_algorithm_explainer()
     
-    # Load Data
     critic_names, games_df, merged_df, importances_df = load_prediction_data(session)
     game_names = games_df['game_name'].tolist()
 
@@ -260,23 +342,23 @@ def main():
         st.error("No data available.")
         st.stop()
 
-    # 1. Critic Selection (Top)
-    selected_critic = st.selectbox("Select Critic", critic_names, index=0)
+    col_sel, _ = st.columns([1, 2])
+    with col_sel:
+        selected_critic = st.selectbox("Select Critic", critic_names, index=0)
     
-    # 2. Profile View (Middle)
-    display_critic_profile(importances_df, selected_critic)
+    critic_rows = merged_df[merged_df['critic_name'] == selected_critic]
+    actual_scores = critic_rows[critic_rows['score'].notna()]['score']
+    critic_baseline = actual_scores.mean() if not actual_scores.empty else 5.0
+
+    tab_profile, tab_game = st.tabs(["👤 Critic Profile", "🎲 Game Prediction Analysis"])
     
-    st.divider()
+    with tab_profile:
+        display_critic_profile(importances_df, selected_critic, critic_baseline)
+        
+    with tab_game:
+        selected_game = st.selectbox("Select Game to Analyze", game_names, index=0)
+        display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game, critic_baseline)
     
-    # 3. Game Selection (Bottom Section)
-    st.subheader("Game Prediction Breakdown")
-    selected_game = st.selectbox("Select Game to Analyze", game_names, index=0)
-    
-    # 4. Breakdown
-    display_prediction_breakdown(merged_df, games_df, importances_df, selected_critic, selected_game)
-    
-    # Footer
-    st.write("")
     st.write("")
     if st.button("Log out"):
         st.session_state["password_correct"] = False
