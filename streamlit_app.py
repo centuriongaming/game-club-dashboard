@@ -18,10 +18,10 @@ if st.session_state.get("password_correct", False):
     critic_details_page = st.Page("pages/critic_details.py", title="Critic Details")
     game_details_page = st.Page("pages/game_details.py", title="Game Details")
     predictions_page = st.Page("pages/predictions.py", title="Predictions")
-
+    model_analysis_page = st.Page("pages/model_analytics.py", title="Model Analytics")
 
     # Update the navigation list
-    pg = st.navigation([dashboard_page, critic_details_page, game_details_page, predictions_page])
+    pg = st.navigation([dashboard_page, critic_details_page, game_details_page, predictions_page, model_analysis_page])
     pg.run()
 
 else:
